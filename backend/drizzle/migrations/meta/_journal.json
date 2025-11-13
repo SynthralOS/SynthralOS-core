@@ -1,0 +1,97 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1762841980776,
+      "tag": "0000_classy_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1762895768523,
+      "tag": "0001_lame_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1762896626213,
+      "tag": "0002_thick_thundra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1762899507865,
+      "tag": "0003_swift_ma_gnuci",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1762900000000,
+      "tag": "0004_add_audit_logs_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1762965738606,
+      "tag": "0005_oval_siren",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1762969883609,
+      "tag": "0006_stale_bromley",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1762975379709,
+      "tag": "0007_unknown_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1762976000000,
+      "tag": "0008_add_vector_store_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1762992558111,
+      "tag": "0009_rich_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1763053609919,
+      "tag": "0010_thick_stepford_cuckoos",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1763055285820,
+      "tag": "0011_daily_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1763058643318,
+      "tag": "0012_loving_martin_li",
+      "breakpoints": true
+    }
+  ]
+}

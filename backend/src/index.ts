@@ -1,0 +1,227 @@
+// Load environment variables FIRST before any other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Initialize OpenTelemetry FIRST before any other imports
+import { initializeTelemetry, shutdownTelemetry } from './config/telemetry';
+initializeTelemetry();
+
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import workflowsRouter from './routes/workflows';
+import authRouter from './routes/auth';
+import executionsRouter from './routes/executions';
+import webhooksRouter from './routes/webhooks';
+import statsRouter from './routes/stats';
+import templatesRouter from './routes/templates';
+import analyticsRouter from './routes/analytics';
+import alertsRouter from './routes/alerts';
+import rolesRouter from './routes/roles';
+import teamsRouter from './routes/teams';
+import invitationsRouter from './routes/invitations';
+import usersRouter from './routes/users';
+import apiKeysRouter from './routes/apiKeys';
+import auditLogsRouter from './routes/auditLogs';
+import emailOAuthRouter from './routes/emailOAuth';
+import emailTriggerMonitoringRouter from './routes/emailTriggerMonitoring';
+import performanceMonitoringRouter from './routes/performanceMonitoring';
+import agentsRouter from './routes/agents';
+import observabilityRouter from './routes/observability';
+import osintRouter from './routes/osint';
+import connectorsRouter from './routes/connectors';
+import nangoRouter from './routes/nango';
+import earlyAccessRouter from './routes/earlyAccess';
+import contactRouter from './routes/contact';
+import { scheduler } from './services/scheduler';
+import { permissionService } from './services/permissionService';
+import { websocketService } from './services/websocketService';
+import { emailTriggerService } from './services/emailTriggerService';
+import { osintService } from './services/osintService';
+import { auditLogMiddleware } from './middleware/auditLog';
+import { performanceMiddleware } from './services/performanceMonitoring';
+import { initializeAgentFrameworks } from './services/agentFrameworkInit';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
+import redis from './config/redis';
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+  },
+});
+
+// Initialize WebSocket service
+websocketService.initialize(io);
+
+const PORT = process.env.PORT || 4000;
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Performance monitoring middleware (track all requests)
+app.use(performanceMiddleware);
+
+// Audit logging middleware (applied to all routes after authentication)
+// Note: This will be applied per-route where authentication is required
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'SynthralOS Automation Platform API Documentation',
+}));
+
+// API Routes
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/workflows', workflowsRouter);
+app.use('/api/v1/executions', executionsRouter);
+app.use('/api/v1/stats', statsRouter);
+app.use('/api/v1/templates', templatesRouter);
+app.use('/api/v1/analytics', analyticsRouter);
+app.use('/api/v1/alerts', alertsRouter);
+app.use('/api/v1/roles', rolesRouter);
+app.use('/api/v1/teams', teamsRouter);
+app.use('/api/v1/invitations', invitationsRouter);
+app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/api-keys', apiKeysRouter);
+app.use('/api/v1/audit-logs', auditLogsRouter);
+app.use('/api/v1/email-oauth', emailOAuthRouter);
+app.use('/api/v1/email-triggers/monitoring', emailTriggerMonitoringRouter);
+app.use('/api/v1/monitoring/performance', performanceMonitoringRouter);
+app.use('/api/v1/agents', agentsRouter);
+app.use('/api/v1/observability', observabilityRouter);
+app.use('/api/v1/osint', osintRouter);
+app.use('/api/v1/connectors', connectorsRouter);
+app.use('/api/v1/nango', nangoRouter);
+app.use('/api/v1/early-access', earlyAccessRouter);
+app.use('/api/v1/contact', contactRouter);
+app.use('/webhooks', webhooksRouter);
+
+app.get('/api/v1', (req, res) => {
+  res.json({ message: 'SynthralOS Automation Platform API v1' });
+});
+
+// WebSocket connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+
+  // Join execution room
+  socket.on('execution:subscribe', (executionId: string) => {
+    socket.join(`execution:${executionId}`);
+    console.log(`Client ${socket.id} subscribed to execution ${executionId}`);
+  });
+
+  // Leave execution room
+  socket.on('execution:unsubscribe', (executionId: string) => {
+    socket.leave(`execution:${executionId}`);
+    console.log(`Client ${socket.id} unsubscribed from execution ${executionId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Error handling middleware
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+httpServer.listen(PORT, async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Initialize default permissions
+  try {
+    await permissionService.initializeDefaultPermissions();
+    console.log('✅ Default permissions initialized');
+  } catch (error) {
+    console.error('⚠️  Error initializing permissions:', error);
+  }
+  
+  // Start scheduler for scheduled workflows
+  await scheduler.start();
+  console.log('⏰ Scheduler started');
+  
+  // Initialize agent frameworks
+  initializeAgentFrameworks();
+  
+  // Initialize self-healing service (repair queue is auto-initialized)
+  console.log('✅ Self-healing service initialized');
+  
+  // Observability and analytics services are auto-initialized
+  console.log('✅ Observability services initialized');
+  
+  // Start email trigger polling service
+  try {
+    await emailTriggerService.startPolling();
+    console.log('📧 Email trigger service started');
+    
+    // Start OSINT monitoring service
+    try {
+      await osintService.startPolling();
+      console.log('🔍 OSINT monitoring service started');
+    } catch (error) {
+      console.error('⚠️  Error starting OSINT service:', error);
+    }
+  } catch (error) {
+    console.error('⚠️  Error starting email trigger service:', error);
+  }
+
+  // Test Redis connection
+  try {
+    await redis.ping();
+    console.log('✅ Redis cache connected');
+  } catch (error) {
+    console.error('⚠️  Redis not available, caching disabled:', error);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await shutdownTelemetry();
+  const { posthogService } = await import('./services/posthogService');
+  const { rudderstackService } = await import('./services/rudderstackService');
+  await posthogService.flush();
+  await rudderstackService.shutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await shutdownTelemetry();
+  const { posthogService } = await import('./services/posthogService');
+  const { rudderstackService } = await import('./services/rudderstackService');
+  await posthogService.flush();
+  await rudderstackService.shutdown();
+  process.exit(0);
+});
+
+export { app, io };
+

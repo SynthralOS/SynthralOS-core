@@ -1,0 +1,1 @@
+ALTER TABLE "workflows" ADD COLUMN "tags" jsonb DEFAULT '[]'::jsonb;
