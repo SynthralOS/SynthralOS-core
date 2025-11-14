@@ -13,6 +13,7 @@
 import { guardrailsService, PromptLengthResult, RegionRoutingResult, CostTieringResult, ValidationResult } from './guardrailsService';
 import { guardrailsAIService, GuardrailsAIOptions } from './guardrailsAIService';
 import { policyEngineService, PolicyContext, PolicyEvaluationResult } from './policyEngineService';
+import { retryService } from './retryService';
 import { featureFlagService } from './featureFlagService';
 import { db } from '../config/database';
 import { organizations } from '../../drizzle/schema';
@@ -64,6 +65,10 @@ export interface RoutingDecision {
   
   // Policy evaluation results
   policyEvaluation?: PolicyEvaluationResult;
+  
+  // Reroute information
+  fallbackRegions?: string[];
+  fallbackProviders?: LLMProvider[];
 }
 
 /**
@@ -487,7 +492,46 @@ export class ArchGWService {
       }
     }
 
-    // Step 10: Build final routing decision
+    // Step 10: Determine fallback regions and providers for rerouting
+    const fallbackRegions: string[] = [];
+    const fallbackProviders: LLMProvider[] = [];
+
+    if (options.enableReroute !== false) {
+      // Add fallback regions from options or determine based on compliance
+      if (options.fallbackRegions && options.fallbackRegions.length > 0) {
+        fallbackRegions.push(...options.fallbackRegions);
+      } else {
+        // Default fallback regions based on compliance requirements
+        if (orgComplianceRequirements.includes('GDPR') || orgDataResidency === 'EU') {
+          fallbackRegions.push('eu-west-1', 'eu-central-1');
+        }
+        if (orgComplianceRequirements.includes('HIPAA') || orgDataResidency === 'US') {
+          fallbackRegions.push('us-east-1', 'us-west-2');
+        }
+        // Add global fallbacks
+        if (!fallbackRegions.includes('us-east-1')) {
+          fallbackRegions.push('us-east-1');
+        }
+        if (!fallbackRegions.includes('eu-west-1')) {
+          fallbackRegions.push('eu-west-1');
+        }
+      }
+
+      // Add fallback providers from options
+      if (options.fallbackProviders && options.fallbackProviders.length > 0) {
+        fallbackProviders.push(...options.fallbackProviders);
+      } else {
+        // Default fallback providers
+        const allProviders: LLMProvider[] = ['openai', 'anthropic', 'google'];
+        for (const p of allProviders) {
+          if (p !== finalProvider) {
+            fallbackProviders.push(p);
+          }
+        }
+      }
+    }
+
+    // Step 11: Build final routing decision
     const decision: RoutingDecision = {
       provider: finalProvider,
       model: finalModel,
@@ -510,6 +554,8 @@ export class ArchGWService {
       errors: errors.length > 0 ? errors : undefined,
       inputValidation,
       policyEvaluation,
+      fallbackRegions: fallbackRegions.length > 0 ? fallbackRegions : undefined,
+      fallbackProviders: fallbackProviders.length > 0 ? fallbackProviders : undefined,
     };
 
     // If blocked by policy, return early
@@ -518,6 +564,107 @@ export class ArchGWService {
     }
 
     return decision;
+  }
+
+  /**
+   * Reroute a failed request using StackStorm or fallback logic
+   */
+  async rerouteRequest(
+    originalDecision: RoutingDecision,
+    failureReason: string,
+    options: {
+      userId?: string;
+      workspaceId?: string;
+      useStackStorm?: boolean;
+    } = {}
+  ): Promise<RoutingDecision | null> {
+    const { userId, workspaceId, useStackStorm = true } = options;
+
+    // Check if reroute is enabled and fallbacks are available
+    if (!originalDecision.fallbackRegions && !originalDecision.fallbackProviders) {
+      return null; // No fallbacks available
+    }
+
+    // Check if StackStorm reroute should be used
+    let enableStackStormReroute = useStackStorm;
+    if (enableStackStormReroute) {
+      try {
+        enableStackStormReroute = await featureFlagService.isEnabled(
+          'enable_stackstorm_reroute',
+          userId,
+          workspaceId
+        );
+      } catch (error: any) {
+        console.warn('[ArchGW] Failed to check StackStorm reroute feature flag:', error);
+        enableStackStormReroute = false;
+      }
+    }
+
+    if (enableStackStormReroute) {
+      try {
+        const rerouteResult = await retryService.retryWithReroute(
+          async (region?: string, provider?: string) => {
+            // This function would be called with different region/provider combinations
+            // For now, we return a new routing decision
+            return {
+              ...originalDecision,
+              region: region || originalDecision.region,
+              provider: (provider as LLMProvider) || originalDecision.provider,
+            };
+          },
+          {
+            originalRegion: originalDecision.region,
+            originalProvider: originalDecision.provider,
+            fallbackRegions: originalDecision.fallbackRegions || [],
+            fallbackProviders: originalDecision.fallbackProviders || [],
+            useStackStorm: true,
+            userId,
+            workspaceId,
+          }
+        );
+
+        if (rerouteResult.success && rerouteResult.result) {
+          return rerouteResult.result;
+        }
+      } catch (error: any) {
+        console.warn('[ArchGW] StackStorm reroute failed, falling back to simple reroute:', error);
+      }
+    }
+
+    // Fallback to simple reroute logic
+    return this.simpleReroute(originalDecision, failureReason);
+  }
+
+  /**
+   * Simple reroute logic (fallback when StackStorm is unavailable)
+   */
+  private simpleReroute(
+    originalDecision: RoutingDecision,
+    failureReason: string
+  ): RoutingDecision | null {
+    // Try fallback regions first
+    if (originalDecision.fallbackRegions && originalDecision.fallbackRegions.length > 0) {
+      const nextRegion = originalDecision.fallbackRegions[0];
+      return {
+        ...originalDecision,
+        region: nextRegion,
+        reason: `Rerouted to ${nextRegion} due to: ${failureReason}`,
+        factors: [...(originalDecision.factors || []), 'reroute_region'],
+      };
+    }
+
+    // Try fallback providers
+    if (originalDecision.fallbackProviders && originalDecision.fallbackProviders.length > 0) {
+      const nextProvider = originalDecision.fallbackProviders[0];
+      return {
+        ...originalDecision,
+        provider: nextProvider,
+        reason: `Rerouted to ${nextProvider} due to: ${failureReason}`,
+        factors: [...(originalDecision.factors || []), 'reroute_provider'],
+      };
+    }
+
+    return null; // No reroute possible
   }
 
   /**
