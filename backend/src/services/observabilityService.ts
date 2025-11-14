@@ -281,8 +281,59 @@ export class ObservabilityService {
         traceId: finalTraceId || null,
         timestamp: new Date(),
       });
+
+      // Forward to RudderStack
+      if (userId && workspaceId) {
+        rudderstackService.forwardDatabaseEvent({
+          eventType,
+          userId,
+          workspaceId,
+          organizationId: (context as any)?.organizationId,
+          properties: {
+            status,
+            latencyMs,
+            ...context,
+          },
+          traceId: finalTraceId || undefined,
+        });
+      }
     } catch (err: any) {
       console.error('[Observability] Failed to log event:', err);
+      // Don't throw - observability should not break execution
+    }
+  }
+
+  /**
+   * Record a custom event (alias for logEvent with better naming)
+   */
+  async recordEvent(
+    event: {
+      type: string;
+      userId?: string;
+      organizationId?: string;
+      workspaceId?: string;
+      metadata?: Record<string, unknown>;
+      traceId?: string;
+    }
+  ): Promise<void> {
+    try {
+      const status = (event.metadata as any)?.success === false ? 'error' : 
+                     (event.metadata as any)?.success === true ? 'success' : 'pending';
+      
+      await this.logEvent(
+        event.type,
+        status,
+        event.userId,
+        event.workspaceId,
+        {
+          ...event.metadata,
+          organizationId: event.organizationId,
+        },
+        (event.metadata as any)?.latencyMs,
+        event.traceId
+      );
+    } catch (err: any) {
+      console.error('[Observability] Failed to record event:', err);
       // Don't throw - observability should not break execution
     }
   }
