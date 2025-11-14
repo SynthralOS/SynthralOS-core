@@ -8,6 +8,7 @@ import { featureFlagService } from '../featureFlagService';
 import { costCalculationService } from '../costCalculationService';
 import { guardrailsService } from '../guardrailsService';
 import { langfuseService } from '../langfuseService';
+import { archGWService } from '../archGWService';
 import { eq } from 'drizzle-orm';
 
 export async function executeLLM(context: NodeExecutionContext): Promise<NodeExecutionResult> {
@@ -26,8 +27,8 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
   }
 
   const startTime = Date.now();
-  const modelName = nodeConfig.model || 'gpt-3.5-turbo';
-  const provider = (nodeConfig.provider as 'openai' | 'anthropic' | 'google') || 'openai';
+  let modelName = nodeConfig.model || 'gpt-3.5-turbo';
+  let provider = (nodeConfig.provider as 'openai' | 'anthropic' | 'google') || 'openai';
 
   // Create OpenTelemetry span for LLM execution
   const tracer = trace.getTracer('sos-llm-executor');
@@ -42,11 +43,149 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
   });
 
   let traceId: string | undefined;
+  let routingDecision: any = null;
+  
   try {
     const spanContext = span.spanContext();
     traceId = spanContext.traceId;
 
-    // Guardrails: Check prompt length
+    // ArchGW: Unified routing decision (if enabled)
+    try {
+      const enableArchGW = await featureFlagService.isEnabled(
+        'enable_archgw_routing',
+        context.userId,
+        (context as any).workspaceId
+      );
+
+      if (enableArchGW) {
+        // Get compliance requirements from organization settings or node config
+        let complianceRequirements: string[] = [];
+        const organizationId = (context as any).organizationId;
+        
+        if (organizationId) {
+          try {
+            const [org] = await db
+              .select({ settings: organizations.settings })
+              .from(organizations)
+              .where(eq(organizations.id, organizationId))
+              .limit(1);
+            
+            if (org?.settings && typeof org.settings === 'object') {
+              const settings = org.settings as any;
+              complianceRequirements = settings.complianceRequirements || [];
+            }
+          } catch (error: any) {
+            console.warn('[LLM Executor] Failed to fetch organization settings:', error);
+          }
+        }
+
+        // Merge with node config compliance requirements
+        if (nodeConfig.complianceRequirements) {
+          complianceRequirements = [
+            ...complianceRequirements,
+            ...(Array.isArray(nodeConfig.complianceRequirements) 
+              ? nodeConfig.complianceRequirements 
+              : [nodeConfig.complianceRequirements])
+          ];
+        }
+
+        // Get routing decision from ArchGW
+        routingDecision = await archGWService.routePrompt({
+          userId: context.userId || undefined,
+          organizationId: (context as any).organizationId || undefined,
+          workspaceId: (context as any).workspaceId || undefined,
+          prompt,
+          requestedProvider: provider,
+          requestedModel: modelName,
+          userRegion: nodeConfig.userRegion || (context as any).userRegion,
+          preferredRegion: nodeConfig.preferredRegion || (context as any).preferredRegion,
+          dataResidency: nodeConfig.dataResidency || (context as any).dataResidency,
+          complianceRequirements: complianceRequirements.length > 0 ? complianceRequirements : undefined,
+          maxCost: nodeConfig.maxCost,
+          enableCostTiering: nodeConfig.enableCostTiering,
+          enableRegionRouting: nodeConfig.enableRegionRouting,
+          enablePromptLengthRouting: nodeConfig.enablePromptLengthRouting,
+          enforceCompliance: nodeConfig.enforceCompliance !== false,
+          allowModelDowngrade: nodeConfig.allowModelDowngrade !== false,
+          strictCompliance: nodeConfig.strictCompliance === true,
+        });
+
+        // Apply routing decision
+        if (routingDecision) {
+          // Update model and provider based on routing decision
+          if (routingDecision.model && routingDecision.model !== modelName) {
+            const originalModel = modelName;
+            modelName = routingDecision.model;
+            span.setAttributes({
+              'archgw.original_model': originalModel,
+              'archgw.final_model': modelName,
+              'archgw.model_changed': true,
+            });
+          }
+
+          if (routingDecision.provider && routingDecision.provider !== provider) {
+            provider = routingDecision.provider;
+            span.setAttributes({
+              'archgw.provider_changed': true,
+              'archgw.final_provider': provider,
+            });
+          }
+
+          // Add routing decision attributes
+          span.setAttributes({
+            'archgw.region': routingDecision.region || 'none',
+            'archgw.reason': routingDecision.reason || 'none',
+            'archgw.factors': routingDecision.factors?.join(',') || 'none',
+            'archgw.requires_compliance': routingDecision.requiresCompliance || false,
+            'archgw.data_residency': routingDecision.dataResidency || 'none',
+            'archgw.cost_tier': routingDecision.costTier || 'none',
+            'archgw.estimated_cost': routingDecision.estimatedCost || 0,
+          });
+
+          if (routingDecision.endpoint) {
+            span.setAttributes({
+              'archgw.endpoint': routingDecision.endpoint,
+            });
+          }
+
+          // Add warnings and errors
+          if (routingDecision.warnings && routingDecision.warnings.length > 0) {
+            span.setAttributes({
+              'archgw.warnings': routingDecision.warnings.join('; '),
+            });
+          }
+
+          if (routingDecision.errors && routingDecision.errors.length > 0) {
+            span.setAttributes({
+              'archgw.errors': routingDecision.errors.join('; '),
+            });
+            // If strict compliance and errors exist, fail early
+            if (nodeConfig.strictCompliance) {
+              span.setStatus({ 
+                code: SpanStatusCode.ERROR, 
+                message: `ArchGW routing failed: ${routingDecision.errors.join(', ')}` 
+              });
+              span.end();
+              return {
+                success: false,
+                error: {
+                  message: `Routing failed: ${routingDecision.errors.join(', ')}`,
+                  code: 'ARCHGW_ROUTING_ERROR',
+                  details: routingDecision,
+                },
+              };
+            }
+          }
+
+          console.log(`[LLM Executor] ArchGW routing: ${routingDecision.reason}`);
+        }
+      }
+    } catch (error: any) {
+      console.warn('[LLM Executor] ArchGW routing failed:', error);
+      // Continue with default routing if ArchGW fails
+    }
+
+    // Guardrails: Check prompt length (skip if ArchGW already handled it)
     try {
       const enableLengthCheck = await featureFlagService.isEnabled(
         'enable_prompt_length_check',
@@ -54,7 +193,10 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         (context as any).workspaceId
       );
 
-      if (enableLengthCheck) {
+      // Skip individual checks if ArchGW already handled routing
+      const skipIndividualChecks = routingDecision && routingDecision.factors?.includes('prompt_length');
+
+      if (enableLengthCheck && !skipIndividualChecks) {
         const lengthCheck = guardrailsService.checkPromptLength(prompt, {
           minLength: nodeConfig.minPromptLength,
           maxLength: nodeConfig.maxPromptLength,
@@ -117,7 +259,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       // Continue execution if length check fails
     }
 
-    // Guardrails: Apply cost tiering based on plan (if enabled)
+    // Guardrails: Apply cost tiering based on plan (skip if ArchGW already handled it)
     try {
       const enableCostTiering = await featureFlagService.isEnabled(
         'enable_cost_tiering',
@@ -125,7 +267,10 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         (context as any).workspaceId
       );
 
-      if (enableCostTiering) {
+      // Skip individual checks if ArchGW already handled routing
+      const skipIndividualChecks = routingDecision && routingDecision.factors?.includes('cost_tiering');
+
+      if (enableCostTiering && !skipIndividualChecks) {
         // Get organization plan
         let organizationPlan: 'free' | 'pro' | 'team' | 'enterprise' = 'free';
         const organizationId = (context as any).organizationId;
@@ -182,7 +327,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       // Continue execution if cost tiering fails
     }
 
-    // Guardrails: Determine region-based routing (if enabled)
+    // Guardrails: Determine region-based routing (skip if ArchGW already handled it)
     try {
       const enableRegionRouting = await featureFlagService.isEnabled(
         'enable_region_routing',
@@ -190,7 +335,10 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         (context as any).workspaceId
       );
 
-      if (enableRegionRouting) {
+      // Skip individual checks if ArchGW already handled routing
+      const skipIndividualChecks = routingDecision && routingDecision.factors?.includes('region_routing');
+
+      if (enableRegionRouting && !skipIndividualChecks) {
         // Get compliance requirements from organization settings or node config
         let complianceRequirements: string[] = [];
         const organizationId = (context as any).organizationId;
