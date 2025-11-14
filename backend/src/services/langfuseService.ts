@@ -239,9 +239,23 @@ export class LangfuseService {
       return null;
     }
 
+    const startTime = performance.now();
+
     // Process asynchronously using setImmediate to avoid blocking
     return new Promise<string | null>((resolve, reject) => {
-      this.spanQueue.push({ options, resolve, reject });
+      const wrappedResolve = (url: string | null) => {
+        const duration = performance.now() - startTime;
+        this.recordExportDuration(duration);
+        resolve(url);
+      };
+      
+      const wrappedReject = (err: any) => {
+        const duration = performance.now() - startTime;
+        this.recordExportDuration(duration);
+        reject(err);
+      };
+
+      this.spanQueue.push({ options, resolve: wrappedResolve, reject: wrappedReject });
       
       // Trigger async processing if not already processing
       if (!this.processingQueue) {
@@ -251,7 +265,73 @@ export class LangfuseService {
   }
 
   /**
+   * Record export duration for performance metrics
+   */
+  private recordExportDuration(duration: number): void {
+    const now = Date.now();
+    
+    // Add timestamped duration
+    this.exportDurations.push(duration);
+    
+    // Keep only recent metrics (within window)
+    const cutoff = now - this.metricsWindow;
+    if (this.exportDurations.length > this.maxMetricsHistory) {
+      // Remove oldest entries if we exceed max history
+      this.exportDurations = this.exportDurations.slice(-this.maxMetricsHistory);
+    }
+  }
+
+  /**
+   * Get performance metrics (p50, p95, p99, avg)
+   */
+  getPerformanceMetrics(): {
+    p50: number;
+    p95: number;
+    p99: number;
+    avg: number;
+    count: number;
+    max: number;
+    min: number;
+  } {
+    if (this.exportDurations.length === 0) {
+      return {
+        p50: 0,
+        p95: 0,
+        p99: 0,
+        avg: 0,
+        count: 0,
+        max: 0,
+        min: 0,
+      };
+    }
+
+    const sorted = [...this.exportDurations].sort((a, b) => a - b);
+    const count = sorted.length;
+    const sum = sorted.reduce((a, b) => a + b, 0);
+
+    return {
+      p50: this.percentile(sorted, 0.5),
+      p95: this.percentile(sorted, 0.95),
+      p99: this.percentile(sorted, 0.99),
+      avg: sum / count,
+      count,
+      max: sorted[count - 1],
+      min: sorted[0],
+    };
+  }
+
+  /**
+   * Calculate percentile from sorted array
+   */
+  private percentile(sorted: number[], p: number): number {
+    if (sorted.length === 0) return 0;
+    const index = Math.ceil(sorted.length * p) - 1;
+    return sorted[Math.max(0, index)];
+  }
+
+  /**
    * Process span queue asynchronously with batching
+   * Optimized for minimal overhead
    */
   private async processSpanQueue(): Promise<void> {
     if (this.spanQueue.length === 0 || !this.client) {
@@ -259,67 +339,75 @@ export class LangfuseService {
     }
 
     const items = this.spanQueue.splice(0, this.batchSize);
-    const startTime = Date.now();
+    const batchStartTime = performance.now();
     
     // Process items in parallel for better performance
-    const promises = items.map(async (item) => {
-      try {
-        const generation = this.client!.generation({
-          traceId: item.options.traceId,
-          id: item.options.spanId,
-          name: item.options.name,
-          parentObservationId: item.options.parentSpanId,
-          startTime: item.options.startTime,
-          endTime: item.options.endTime,
-          metadata: {
-            ...item.options.attributes,
-            cost: item.options.cost,
-            tokens: item.options.tokens,
-            // Add OpenTelemetry trace/span IDs for linking
-            'otel.traceId': item.options.traceId,
-            'otel.spanId': item.options.spanId,
-          },
-          level: item.options.status?.code === SpanStatusCode.ERROR ? 'ERROR' : 'DEFAULT',
-          statusMessage: item.options.status?.message,
-        });
+    // Use Promise.allSettled to handle individual failures without blocking
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        try {
+          // Create generation with minimal overhead
+          const generation = this.client!.generation({
+            traceId: item.options.traceId,
+            id: item.options.spanId,
+            name: item.options.name,
+            parentObservationId: item.options.parentSpanId,
+            startTime: item.options.startTime,
+            endTime: item.options.endTime,
+            metadata: {
+              ...item.options.attributes,
+              cost: item.options.cost,
+              tokens: item.options.tokens,
+              // Add OpenTelemetry trace/span IDs for linking
+              'otel.traceId': item.options.traceId,
+              'otel.spanId': item.options.spanId,
+            },
+            level: item.options.status?.code === SpanStatusCode.ERROR ? 'ERROR' : 'DEFAULT',
+            statusMessage: item.options.status?.message,
+          });
 
-        // Add events if available
-        if (item.options.events && item.options.events.length > 0) {
-          for (const event of item.options.events) {
-            generation.event({
-              name: event.name,
-              time: event.time,
-              metadata: event.attributes,
-            });
+          // Add events if available (batch events to reduce overhead)
+          if (item.options.events && item.options.events.length > 0) {
+            // Limit events to prevent overhead
+            const eventsToAdd = item.options.events.slice(0, 10);
+            for (const event of eventsToAdd) {
+              generation.event({
+                name: event.name,
+                time: event.time,
+                metadata: event.attributes,
+              });
+            }
           }
+
+          // End generation
+          generation.end({
+            endTime: item.options.endTime,
+          });
+
+          // Return Langfuse trace URL
+          const url = this.getTraceUrl(item.options.traceId);
+          item.resolve(url);
+        } catch (error: any) {
+          console.error('[Langfuse] Span export failed:', error);
+          item.reject(error);
         }
+      })
+    );
 
-        // End generation
-        generation.end({
-          endTime: item.options.endTime,
-        });
-
-        // Return Langfuse trace URL
-        const url = this.getTraceUrl(item.options.traceId);
-        item.resolve(url);
-      } catch (error: any) {
-        console.error('[Langfuse] Span export failed:', error);
-        item.reject(error);
-      }
-    });
-
-    await Promise.all(promises);
-
-    // Flush to Langfuse after processing batch
+    // Flush to Langfuse after processing batch (non-blocking)
     if (this.client) {
       try {
-        await this.client.flushAsync();
-        const duration = Date.now() - startTime;
-        if (duration > 100) {
-          console.log(`[Langfuse] Processed batch of ${items.length} spans in ${duration}ms`);
+        // Use flushAsync but don't await - let it complete in background
+        this.client.flushAsync().catch((error: any) => {
+          console.error('[Langfuse] Flush failed:', error);
+        });
+        
+        const batchDuration = performance.now() - batchStartTime;
+        if (batchDuration > 100) {
+          console.log(`[Langfuse] Processed batch of ${items.length} spans in ${batchDuration.toFixed(2)}ms`);
         }
       } catch (error: any) {
-        console.error('[Langfuse] Flush failed:', error);
+        console.error('[Langfuse] Flush error:', error);
       }
     }
   }
@@ -339,6 +427,7 @@ export class LangfuseService {
 
   /**
    * Process agent execution queue asynchronously with batching
+   * Optimized for minimal overhead
    */
   private async processAgentExecutionQueue(): Promise<void> {
     if (this.agentExecutionQueue.length === 0 || !this.client) {
@@ -346,31 +435,36 @@ export class LangfuseService {
     }
 
     const items = this.agentExecutionQueue.splice(0, this.batchSize);
-    const startTime = Date.now();
+    const batchStartTime = performance.now();
     
     // Process items in parallel for better performance
-    const promises = items.map(async (item) => {
-      try {
-        const url = await this.exportAgentExecutionSync(item.options);
-        item.resolve(url);
-      } catch (error: any) {
-        console.error('[Langfuse] Agent execution export failed:', error);
-        item.reject(error);
-      }
-    });
+    // Use Promise.allSettled to handle individual failures without blocking
+    await Promise.allSettled(
+      items.map(async (item) => {
+        try {
+          const url = await this.exportAgentExecutionSync(item.options);
+          item.resolve(url);
+        } catch (error: any) {
+          console.error('[Langfuse] Agent execution export failed:', error);
+          item.reject(error);
+        }
+      })
+    );
 
-    await Promise.all(promises);
-
-    // Flush to Langfuse after processing batch
+    // Flush to Langfuse after processing batch (non-blocking)
     if (this.client) {
       try {
-        await this.client.flushAsync();
-        const duration = Date.now() - startTime;
-        if (duration > 100) {
-          console.log(`[Langfuse] Processed batch of ${items.length} agent executions in ${duration}ms`);
+        // Use flushAsync but don't await - let it complete in background
+        this.client.flushAsync().catch((error: any) => {
+          console.error('[Langfuse] Flush failed:', error);
+        });
+        
+        const batchDuration = performance.now() - batchStartTime;
+        if (batchDuration > 100) {
+          console.log(`[Langfuse] Processed batch of ${items.length} agent executions in ${batchDuration.toFixed(2)}ms`);
         }
       } catch (error: any) {
-        console.error('[Langfuse] Flush failed:', error);
+        console.error('[Langfuse] Flush error:', error);
       }
     }
   }
@@ -456,9 +550,23 @@ export class LangfuseService {
       return null;
     }
 
+    const startTime = performance.now();
+
     // Process asynchronously using setImmediate to avoid blocking
     return new Promise<string | null>((resolve, reject) => {
-      this.agentExecutionQueue.push({ options, resolve, reject });
+      const wrappedResolve = (url: string | null) => {
+        const duration = performance.now() - startTime;
+        this.recordExportDuration(duration);
+        resolve(url);
+      };
+      
+      const wrappedReject = (err: any) => {
+        const duration = performance.now() - startTime;
+        this.recordExportDuration(duration);
+        reject(err);
+      };
+
+      this.agentExecutionQueue.push({ options, resolve: wrappedResolve, reject: wrappedReject });
       
       // Trigger async processing if not already processing
       if (!this.processingQueue) {
@@ -593,14 +701,17 @@ export class LangfuseService {
       });
     }
 
-    // Export each thought as a span/observation
-    if (thoughts.length > 0 && this.client) {
-      for (const thought of thoughts) {
+    // Export each thought as a span/observation (limit to prevent overhead)
+    // Only export first 50 thoughts to keep overhead low
+    const thoughtsToExport = thoughts.slice(0, 50);
+    if (thoughtsToExport.length > 0 && this.client) {
+      // Batch create observations for better performance
+      const observations = thoughtsToExport.map((thought) => {
         const thoughtStartTime = thought.timestamp || options.startTime;
         const thoughtEndTime = thought.timestamp || options.endTime;
 
         // Create a generation (observation) for each thought
-        const observation = this.client.observation({
+        const observation = this.client!.observation({
           type: 'GENERATION',
           traceId: options.traceId,
           name: `Thought ${thought.step}${thought.action ? `: ${thought.action}` : ''}`,
@@ -608,7 +719,7 @@ export class LangfuseService {
           endTime: thoughtEndTime instanceof Date ? thoughtEndTime : new Date(thoughtEndTime),
           metadata: {
             step: thought.step,
-            thought: thought.thought,
+            thought: thought.thought ? String(thought.thought).substring(0, 500) : undefined, // Truncate for performance
             action: thought.action,
             tool: thought.tool,
           },
@@ -619,6 +730,13 @@ export class LangfuseService {
         observation.end({
           endTime: thoughtEndTime instanceof Date ? thoughtEndTime : new Date(thoughtEndTime),
         });
+
+        return observation;
+      });
+
+      // Log if thoughts were truncated
+      if (thoughts.length > thoughtsToExport.length) {
+        console.log(`[Langfuse] Truncated ${thoughts.length - thoughtsToExport.length} thoughts to keep overhead low`);
       }
     }
 

@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { setOrganization } from '../middleware/organization';
 import { auditLogMiddleware } from '../middleware/auditLog';
 import { observabilityService } from '../services/observabilityService';
+import { langfuseService } from '../services/langfuseService';
 import { db } from '../config/database';
 import { eventLogs } from '../../drizzle/schema';
 import { eq, gte, and, desc } from 'drizzle-orm';
@@ -354,6 +355,32 @@ router.get('/traces/:traceId/export', async (req: AuthRequest, res) => {
   } catch (error: any) {
     console.error('Error exporting trace:', error);
     res.status(500).json({ message: 'Failed to export trace', error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/observability/langfuse/metrics
+ * Get Langfuse export performance metrics
+ */
+router.get('/langfuse/metrics', async (req: AuthRequest, res) => {
+  try {
+    if (!req.user || !req.organizationId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const metrics = langfuseService.getPerformanceMetrics();
+    
+    res.json({
+      metrics,
+      target: {
+        p95: 150, // Target p95 < 150ms
+        status: metrics.p95 < 150 ? 'ok' : 'warning',
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching Langfuse metrics:', error);
+    res.status(500).json({ message: 'Failed to fetch metrics', error: error.message });
   }
 });
 
