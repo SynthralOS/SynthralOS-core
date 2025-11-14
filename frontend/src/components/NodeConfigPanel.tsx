@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Node } from 'reactflow';
 import { getNodeDefinition } from '../lib/nodes/nodeRegistry';
 import api from '../lib/api';
+import { CodeEditor } from './CodeEditor';
+import { useQuery } from '@tanstack/react-query';
 
 interface NodeConfigPanelProps {
   node: Node | null;
@@ -14,6 +16,16 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
   const [retry, setRetry] = useState<Record<string, unknown>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+
+  // Fetch code agents for hook selection
+  const { data: codeAgents } = useQuery({
+    queryKey: ['code-agents'],
+    queryFn: async () => {
+      const response = await api.get('/code-agents');
+      return response.data;
+    },
+    enabled: node?.data?.type === 'ai.rag' || node?.data?.type === 'ai.document_ingest',
+  });
 
   useEffect(() => {
     if (node) {
@@ -166,6 +178,29 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
   const renderInput = (key: string, property: any) => {
     const value = config[key] ?? property.default ?? '';
 
+    // Special handling for hook fields (preIngestHook, postAnswerHook)
+    if (key === 'preIngestHook' || key === 'postAnswerHook') {
+      return (
+        <div className="space-y-2">
+          <select
+            value={value as string || ''}
+            onChange={(e) => handleChange(key, e.target.value || undefined)}
+            className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+          >
+            <option value="">None (no hook)</option>
+            {codeAgents?.map((agent: any) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name} ({agent.language}) - v{agent.version}
+              </option>
+            ))}
+          </select>
+          {property.description && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{property.description}</p>
+          )}
+        </div>
+      );
+    }
+
     switch (property.type) {
       case 'string':
         if (property.enum) {
@@ -183,13 +218,43 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
             </select>
           );
         }
+        // Use Monaco editor for code format
+        if (property.format === 'code') {
+          // Determine language from node type or property
+          let language: 'javascript' | 'python' | 'typescript' | 'bash' = 'javascript';
+          const nodeType = node?.data?.type as string;
+          if (nodeType === 'action.code.python') {
+            language = 'python';
+          } else if (property.language === 'python') {
+            language = 'python';
+          } else if (property.language === 'typescript') {
+            language = 'typescript';
+          } else if (property.language === 'bash') {
+            language = 'bash';
+          }
+          
+          return (
+            <div className="space-y-2">
+              <CodeEditor
+                language={language}
+                value={value as string || ''}
+                onChange={(val) => handleChange(key, val)}
+                height="300px"
+                placeholder={property.description}
+              />
+              {property.description && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">{property.description}</p>
+              )}
+            </div>
+          );
+        }
         return (
           <textarea
             value={value as string}
             onChange={(e) => handleChange(key, e.target.value)}
             placeholder={property.description}
-            rows={property.format === 'code' ? 10 : 3}
-            className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono text-sm"
+            rows={3}
+            className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm"
           />
         );
 
@@ -359,27 +424,191 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
           </div>
         )}
 
-        {Object.entries(nodeDef.config.properties).map(([key, property]) => {
-          // Skip credentials field for email triggers (handled by OAuth)
-          if (key === 'credentials' && (node.data.type as string)?.startsWith('trigger.email.')) {
-            return null;
-          }
-          
-          return (
-            <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                {key}
-                {nodeDef.config?.required?.includes(key) && (
-                  <span className="text-red-500 dark:text-red-400 ml-1">*</span>
-                )}
-              </label>
-              {property.description && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
-              )}
-              {renderInput(key, property)}
+        {/* Web Scrape Node - Grouped Sections */}
+        {(node.data.type as string) === 'action.web_scrape' && (
+          <>
+            {/* Basic Configuration */}
+            <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Basic Configuration</h4>
+              {Object.entries(nodeDef.config.properties)
+                .filter(([key]) => ['url', 'selectors', 'extractText', 'extractHtml', 'extractAttributes'].includes(key))
+                .map(([key, property]) => {
+                  if (key === 'selectors') {
+                    const selectors = (config.selectors as Record<string, string>) || {};
+                    const selectorEntries = Object.entries(selectors);
+                    
+                    return (
+                      <div key={key} className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          {key}
+                          {nodeDef.config?.required?.includes(key) && (
+                            <span className="text-red-500 dark:text-red-400 ml-1">*</span>
+                          )}
+                        </label>
+                        {property.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{property.description}</p>
+                        )}
+                        <div className="space-y-2">
+                          {selectorEntries.map(([fieldName, selector], index) => (
+                            <div key={index} className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Field name (e.g., title)"
+                                value={fieldName}
+                                onChange={(e) => {
+                                  const newSelectors = { ...selectors };
+                                  delete newSelectors[fieldName];
+                                  newSelectors[e.target.value] = selector;
+                                  handleChange('selectors', newSelectors);
+                                }}
+                                className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm"
+                              />
+                              <input
+                                type="text"
+                                placeholder="CSS selector (e.g., h1.title)"
+                                value={selector}
+                                onChange={(e) => {
+                                  const newSelectors = { ...selectors };
+                                  newSelectors[fieldName] = e.target.value;
+                                  handleChange('selectors', newSelectors);
+                                }}
+                                className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-mono"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newSelectors = { ...selectors };
+                                  delete newSelectors[fieldName];
+                                  handleChange('selectors', newSelectors);
+                                }}
+                                className="px-2 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                title="Remove selector"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const newSelectors = { ...selectors, '': '' };
+                              handleChange('selectors', newSelectors);
+                            }}
+                            className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                          >
+                            + Add Selector
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div key={key} className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {key}
+                        {nodeDef.config?.required?.includes(key) && (
+                          <span className="text-red-500 dark:text-red-400 ml-1">*</span>
+                        )}
+                      </label>
+                      {property.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                      )}
+                      {renderInput(key, property)}
+                    </div>
+                  );
+                })}
             </div>
-          );
-        })}
+
+            {/* JavaScript Rendering (Puppeteer) */}
+            <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">JavaScript Rendering</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Enable for JavaScript-rendered content (SPAs, React, Vue, Angular). Auto-detected if not set.
+              </p>
+              {Object.entries(nodeDef.config.properties)
+                .filter(([key]) => ['renderJavaScript', 'waitForSelector', 'waitForTimeout', 'executeJavaScript', 'scrollToBottom', 'viewport', 'screenshot'].includes(key))
+                .map(([key, property]) => (
+                  <div key={key} className="mb-3">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {key}
+                    </label>
+                    {property.description && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                    )}
+                    {renderInput(key, property)}
+                  </div>
+                ))}
+            </div>
+
+            {/* Proxy Settings */}
+            <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Proxy Settings</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Use proxy for requests to avoid rate limits and IP bans.
+              </p>
+              {Object.entries(nodeDef.config.properties)
+                .filter(([key]) => ['useProxy', 'proxyOptions', 'proxyId'].includes(key))
+                .map(([key, property]) => (
+                  <div key={key} className="mb-3">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {key}
+                    </label>
+                    {property.description && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                    )}
+                    {renderInput(key, property)}
+                  </div>
+                ))}
+            </div>
+
+            {/* Advanced Options */}
+            <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Advanced Options</h4>
+              {Object.entries(nodeDef.config.properties)
+                .filter(([key]) => !['url', 'selectors', 'extractText', 'extractHtml', 'extractAttributes', 'renderJavaScript', 'waitForSelector', 'waitForTimeout', 'executeJavaScript', 'scrollToBottom', 'viewport', 'screenshot', 'useProxy', 'proxyOptions', 'proxyId'].includes(key))
+                .map(([key, property]) => (
+                  <div key={key} className="mb-3">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {key}
+                      {nodeDef.config?.required?.includes(key) && (
+                        <span className="text-red-500 dark:text-red-400 ml-1">*</span>
+                      )}
+                    </label>
+                    {property.description && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                    )}
+                    {renderInput(key, property)}
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
+
+        {/* Other Nodes - Standard Configuration */}
+        {(node.data.type as string) !== 'action.web_scrape' && (
+          <>
+            {Object.entries(nodeDef.config.properties).map(([key, property]) => {
+              // Skip credentials field for email triggers (handled by OAuth)
+              if (key === 'credentials' && (node.data.type as string)?.startsWith('trigger.email.')) {
+                return null;
+              }
+              
+              return (
+                <div key={key}>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {key}
+                    {nodeDef.config?.required?.includes(key) && (
+                      <span className="text-red-500 dark:text-red-400 ml-1">*</span>
+                    )}
+                  </label>
+                  {property.description && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                  )}
+                  {renderInput(key, property)}
+                </div>
+              );
+            })}
+          </>
+        )}
 
         {/* Breakpoint Settings */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">

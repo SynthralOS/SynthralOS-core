@@ -74,6 +74,12 @@ class OSINTService {
     try {
       let activeMonitors;
       try {
+        // Check if osintMonitors table is properly defined
+        if (!osintMonitors || typeof osintMonitors === 'undefined') {
+          // Silently skip if schema not available - this is expected during initial setup
+          return;
+        }
+        
         // Try using drizzle ORM first
         activeMonitors = await db
           .select()
@@ -83,11 +89,9 @@ class OSINTService {
         // Handle table not existing or schema issues
         if (queryError?.code === '42P01' || queryError?.code === '42601' || 
             queryError?.message?.includes('does not exist') ||
-            queryError?.message?.includes('Symbol(drizzle:Columns)')) {
-          log.warn('Monitors table may not exist yet or schema not migrated. Skipping monitor loading.', {
-            error: queryError.message,
-            code: queryError.code,
-          });
+            queryError?.message?.includes('Symbol(drizzle:Columns)') ||
+            queryError?.message?.includes('Cannot read properties of undefined')) {
+          // Silently skip if table doesn't exist or schema issue - this is expected during initial setup
           return;
         }
         log.error('Failed to load OSINT monitors', queryError, {

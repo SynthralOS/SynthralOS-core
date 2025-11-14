@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Filter, CheckCircle, XCircle, Plug2, Database, MessageSquare, ShoppingCart, Briefcase, Mail } from 'lucide-react';
+import api from '../lib/api';
 
 interface Connector {
   id: string;
@@ -54,14 +55,8 @@ export default function ConnectorMarketplace() {
   const { data: connectors = [], isLoading } = useQuery<Connector[]>({
     queryKey: ['connectors'],
     queryFn: async () => {
-      const token = localStorage.getItem('clerk_session');
-      const response = await fetch('/api/connectors', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) throw new Error('Failed to fetch connectors');
-      return response.json();
+      const response = await api.get('/connectors');
+      return response.data;
     },
   });
 
@@ -69,14 +64,12 @@ export default function ConnectorMarketplace() {
   const { data: connections = [] } = useQuery({
     queryKey: ['connector-connections'],
     queryFn: async () => {
-      const token = localStorage.getItem('clerk_session');
-      const response = await fetch('/api/connectors/connections', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) return [];
-      return response.json();
+      try {
+        const response = await api.get('/connectors/connections');
+        return response.data;
+      } catch (error) {
+        return [];
+      }
     },
   });
 
@@ -106,15 +99,8 @@ export default function ConnectorMarketplace() {
 
   const handleConnect = async (connectorId: string, oauthProvider?: string) => {
     try {
-      const token = localStorage.getItem('clerk_session');
-      const response = await fetch(`/api/connectors/${connectorId}/connect`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      const data = await response.json();
+      const response = await api.post(`/connectors/${connectorId}/connect`);
+      const data = response.data;
       
       if (data.authUrl) {
         // Redirect to OAuth flow
@@ -123,9 +109,9 @@ export default function ConnectorMarketplace() {
         // Show modal or redirect to settings
         alert(`Please configure ${connectorId} credentials in settings. Auth type: ${data.authType}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to connect:', error);
-      alert('Failed to initiate connection');
+      alert(`Failed to initiate connection: ${error.response?.data?.error || error.message}`);
     }
   };
 
@@ -135,16 +121,7 @@ export default function ConnectorMarketplace() {
     }
     
     try {
-      const token = localStorage.getItem('clerk_session');
-      const response = await fetch(`/api/connectors/${connectorId}/disconnect`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) throw new Error('Failed to disconnect');
+      await api.post(`/connectors/${connectorId}/disconnect`);
       
       setConnectionStatuses((prev) => ({
         ...prev,
@@ -153,9 +130,9 @@ export default function ConnectorMarketplace() {
       
       // Refetch connections
       window.location.reload();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to disconnect:', error);
-      alert('Failed to disconnect');
+      alert(`Failed to disconnect: ${error.response?.data?.error || error.message}`);
     }
   };
 

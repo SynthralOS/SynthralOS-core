@@ -15,6 +15,12 @@ export default function Dashboard() {
         totalWorkflows: response.data.totalWorkflows || 0,
         executionsToday: response.data.executionsToday || 0,
         successRate: response.data.successRate || 0,
+        scrapingStats: response.data.scrapingStats || {
+          totalScrapes: 0,
+          scrapesToday: 0,
+          successRate: 0,
+          avgLatency: 0,
+        },
       };
     },
     staleTime: 30000,
@@ -44,6 +50,26 @@ export default function Dashboard() {
     staleTime: 60000, // 1 minute
   });
 
+  // Fetch recent scraping events
+  const { data: scrapingEvents, isLoading: scrapingEventsLoading } = useQuery({
+    queryKey: [...queryKeys.dashboard.stats, 'scraping-events'],
+    queryFn: async () => {
+      const response = await api.get('/stats/scraping/events?limit=10');
+      return response.data;
+    },
+    staleTime: 30000, // 30 seconds
+  });
+
+  // Fetch recent workflows
+  const { data: recentWorkflows, isLoading: recentWorkflowsLoading } = useQuery({
+    queryKey: [...queryKeys.dashboard.stats, 'recent-workflows'],
+    queryFn: async () => {
+      const response = await api.get('/workflows?limit=3');
+      return response.data || [];
+    },
+    staleTime: 60000, // 1 minute
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 animate-fade-in">
       {/* Hero Section */}
@@ -55,7 +81,7 @@ export default function Dashboard() {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         {/* Total Workflows Card */}
         <div className="group relative overflow-hidden rounded-xl bg-white dark:bg-gray-800 border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:border-indigo-300/50 dark:hover:border-indigo-500/50 transition-all duration-300 hover:-translate-y-1 animate-slide-up">
           {/* Gradient overlay on hover */}
@@ -167,6 +193,41 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Scraping Stats Card */}
+        <div className="group relative overflow-hidden rounded-xl bg-white dark:bg-gray-800 border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:border-purple-300/50 dark:hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1 animate-slide-up">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 dark:from-purple-900/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Scrapes Today
+              </h3>
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 dark:from-purple-900/50 to-purple-50 dark:to-purple-900/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                </svg>
+              </div>
+            </div>
+            
+            <div className="flex items-baseline gap-2 mb-3">
+              <span className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-gray-100 dark:via-gray-200 dark:to-gray-100 bg-clip-text text-transparent">
+                {loading ? (
+                  <span className="inline-block w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                ) : (
+                  stats?.scrapingStats?.scrapesToday || 0
+                )}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+              <span>Success: {stats?.scrapingStats?.successRate || 0}%</span>
+              {stats?.scrapingStats?.avgLatency > 0 && (
+                <span>Avg: {Math.round((stats.scrapingStats.avgLatency || 0) / 1000)}s</span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -311,22 +372,42 @@ export default function Dashboard() {
           </div>
           
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-100 dark:from-indigo-900/50 to-indigo-50 dark:to-indigo-900/30 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Workflow {i}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">2 hours ago</p>
-                </div>
-                <div className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
-                  Active
-                </div>
+            {recentWorkflowsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
               </div>
-            ))}
+            ) : recentWorkflows && recentWorkflows.length > 0 ? (
+              recentWorkflows.slice(0, 3).map((workflow: any) => (
+                <Link
+                  key={workflow.id}
+                  to={`/dashboard/workflows/${workflow.id}`}
+                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-100 dark:from-indigo-900/50 to-indigo-50 dark:to-indigo-900/30 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{workflow.name || 'Unnamed Workflow'}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleDateString() : 'Recently updated'}
+                    </p>
+                  </div>
+                  <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    workflow.active
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-400'
+                  }`}>
+                    {workflow.active ? 'Active' : 'Inactive'}
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
+                No workflows yet. <Link to="/dashboard/workflows/new" className="text-indigo-600 dark:text-indigo-400 hover:underline">Create one</Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -379,6 +460,62 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Recent Scraping Events */}
+      {scrapingEvents && scrapingEvents.length > 0 && (
+        <div className="mb-8">
+          <div className="group relative overflow-hidden rounded-xl bg-white dark:bg-gray-800 border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-lg hover:border-purple-300/50 dark:hover:border-purple-500/50 transition-all duration-300">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Scraping Events</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Latest web scraping activities</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">URL</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Engine</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Latency</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {scrapingEvents.map((event: any) => (
+                    <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="max-w-xs truncate text-sm text-gray-900 dark:text-gray-100" title={event.url}>
+                          {event.url}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                          {event.engine}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          event.success
+                            ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300'
+                            : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
+                        }`}>
+                          {event.success ? 'Success' : 'Failed'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {event.latencyMs ? `${Math.round(event.latencyMs / 1000)}s` : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(event.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

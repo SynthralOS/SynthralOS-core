@@ -15,6 +15,13 @@ A comprehensive workflow automation and orchestration platform with AI-powered c
 
 ### Environment Variables
 
+## Custom Code & Code Agents
+
+- `E2B_API_KEY` - E2B API key for ultra-fast code execution (<50ms latency). Get your key at https://e2b.dev
+- `PYTHON_SERVICE_URL` - Optional URL for Python service with Pydantic validation support
+- `SUPABASE_URL` - Supabase project URL (for code blob storage)
+- `SUPABASE_SERVICE_KEY` - Supabase service role key (for code blob storage)
+
 **Backend (.env):**
 ```env
 # Database

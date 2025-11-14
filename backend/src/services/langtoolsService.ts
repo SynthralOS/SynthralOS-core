@@ -69,6 +69,8 @@ export class LangToolsService {
   constructor() {
     // Initialize built-in tools
     this.initializeBuiltInTools();
+    // Register code execution tool for agents
+    this.registerCodeExecutionTool();
   }
 
   /**
@@ -265,6 +267,50 @@ export class LangToolsService {
     return async (toolName: string, input: any): Promise<string> => {
       return await this.executeTool(toolName, input);
     };
+  }
+
+  /**
+   * Register code execution tool for agents
+   * This allows agents to write and execute code autonomously
+   */
+  registerCodeExecutionTool(): void {
+    this.registerTool({
+      name: 'execute_code',
+      description: 'Execute JavaScript, Python, TypeScript, or Bash code. Use this to write and run custom logic, perform calculations, transform data, or execute shell commands. The code runs in a secure sandbox.',
+      type: 'custom',
+      schema: z.object({
+        language: z.enum(['javascript', 'python', 'typescript', 'bash']).describe('Programming language to use'),
+        code: z.string().describe('The code to execute'),
+        packages: z.array(z.string()).optional().describe('Python packages to install (for Python only)'),
+        input: z.any().optional().describe('Input data for the code (accessible as "input" variable)'),
+      }),
+      handler: async ({ language, code, packages, input }) => {
+        // Import code execution service
+        const { executeCode } = await import('./nodeExecutors/code');
+        
+        // Create execution context
+        const context = {
+          input: input || {},
+          config: {
+            code,
+            packages: packages || [],
+            timeout: 30000,
+            runtime: 'vm2', // Default runtime, could be enhanced with routing
+          },
+          workflowId: 'agent-execution',
+          nodeId: 'code-tool',
+        };
+
+        // Execute code
+        const result = await executeCode(context, language);
+
+        if (!result.success) {
+          return `Error executing code: ${result.error?.message || 'Unknown error'}`;
+        }
+
+        return JSON.stringify(result.output?.output || result.output);
+      },
+    });
   }
 }
 

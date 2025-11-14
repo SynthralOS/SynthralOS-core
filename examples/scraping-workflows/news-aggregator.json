@@ -1,0 +1,93 @@
+{
+  "name": "News Aggregator",
+  "description": "Scrape news articles from multiple sources",
+  "trigger": {
+    "type": "trigger.schedule",
+    "config": {
+      "schedule": "0 */6 * * *",
+      "timezone": "UTC"
+    }
+  },
+  "nodes": [
+    {
+      "id": "scrape-news-1",
+      "type": "action.web_scrape",
+      "config": {
+        "url": "https://news.example.com/latest",
+        "selectors": {
+          "articles": ".article-item",
+          "title": ".article-title",
+          "summary": ".article-summary",
+          "link": ".article-link",
+          "published": ".article-date"
+        },
+        "extractText": true,
+        "extractAttributes": ["href"],
+        "useProxy": true,
+        "proxyOptions": {
+          "type": "residential",
+          "minScore": 75
+        }
+      }
+    },
+    {
+      "id": "scrape-news-2",
+      "type": "action.web_scrape",
+      "config": {
+        "url": "https://another-news.example.com/headlines",
+        "selectors": {
+          "articles": ".headline",
+          "title": ".headline-title",
+          "link": ".headline-link"
+        },
+        "extractText": true,
+        "extractAttributes": ["href"],
+        "useProxy": true
+      }
+    },
+    {
+      "id": "merge-articles",
+      "type": "action.transform",
+      "config": {
+        "transform": "javascript",
+        "code": "// Merge articles from multiple sources\nconst articles1 = input.articles || [];\nconst articles2 = input.articles || [];\nreturn [...articles1, ...articles2].map(article => ({\n  title: article.title,\n  summary: article.summary || '',\n  link: article.link,\n  published: article.published || new Date().toISOString(),\n  source: article.source || 'unknown'\n}));"
+      }
+    },
+    {
+      "id": "deduplicate",
+      "type": "action.transform",
+      "config": {
+        "transform": "javascript",
+        "code": "// Remove duplicate articles based on title\nconst articles = input || [];\nconst seen = new Set();\nreturn articles.filter(article => {\n  const key = article.title.toLowerCase().trim();\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n});"
+      }
+    },
+    {
+      "id": "send-notification",
+      "type": "action.slack",
+      "config": {
+        "action": "send_message",
+        "channel": "#news",
+        "message": "{{deduplicate.output.length}} new articles scraped"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "scrape-news-1",
+      "to": "merge-articles"
+    },
+    {
+      "from": "scrape-news-2",
+      "to": "merge-articles"
+    },
+    {
+      "from": "merge-articles",
+      "to": "deduplicate"
+    },
+    {
+      "from": "deduplicate",
+      "to": "send-notification"
+    }
+  ]
+}
+

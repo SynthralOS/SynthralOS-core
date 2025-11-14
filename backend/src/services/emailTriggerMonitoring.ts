@@ -223,6 +223,12 @@ class EmailTriggerMonitoring {
    */
   async updateMetricsFromDatabase(): Promise<void> {
     try {
+      // Check if emailTriggers table is properly defined
+      if (!emailTriggers || typeof emailTriggers === 'undefined') {
+        // Silently skip if schema not available - this is expected during initial setup
+        return;
+      }
+
       let allTriggers;
       try {
         allTriggers = await db
@@ -230,9 +236,12 @@ class EmailTriggerMonitoring {
           .from(emailTriggers)
           .where(eq(emailTriggers.active, true));
       } catch (queryError: any) {
-        // If table doesn't exist or SQL syntax error, return empty array
-        if (queryError?.code === '42P01' || queryError?.code === '42601') {
-          console.warn('Email triggers table may not exist yet or has schema issues, skipping metrics update');
+        // If table doesn't exist or SQL syntax error, silently skip
+        if (queryError?.code === '42P01' || queryError?.code === '42601' ||
+            queryError?.message?.includes('does not exist') ||
+            queryError?.message?.includes('Symbol(drizzle:Columns)') ||
+            queryError?.message?.includes('Cannot read properties of undefined')) {
+          // Silently skip - this is expected during initial setup
           return;
         }
         throw queryError;

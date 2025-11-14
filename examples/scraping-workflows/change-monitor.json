@@ -1,0 +1,66 @@
+{
+  "name": "Website Change Monitor",
+  "description": "Monitor a website for changes and trigger alerts",
+  "trigger": {
+    "type": "trigger.schedule",
+    "config": {
+      "schedule": "0 */1 * * *",
+      "timezone": "UTC"
+    }
+  },
+  "nodes": [
+    {
+      "id": "scrape-page",
+      "type": "action.web_scrape",
+      "config": {
+        "url": "https://example.com/monitor-page",
+        "selectors": {
+          "content": ".main-content"
+        },
+        "extractText": true,
+        "extractHtml": true
+      }
+    },
+    {
+      "id": "check-changes",
+      "type": "action.code",
+      "config": {
+        "language": "javascript",
+        "code": "// Compare with previous snapshot\nconst currentContent = input.content;\nconst previousContent = context.previousContent || '';\n\nif (currentContent !== previousContent) {\n  return {\n    changed: true,\n    currentContent: currentContent,\n    previousContent: previousContent\n  };\n}\n\nreturn { changed: false };"
+      }
+    },
+    {
+      "id": "send-alert",
+      "type": "action.condition",
+      "config": {
+        "condition": "{{check-changes.output.changed}} === true"
+      }
+    },
+    {
+      "id": "email-alert",
+      "type": "action.sendgrid",
+      "config": {
+        "action": "send_email",
+        "to": "admin@example.com",
+        "subject": "Website Change Detected",
+        "body": "The monitored page has changed. Check: https://example.com/monitor-page"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "scrape-page",
+      "to": "check-changes"
+    },
+    {
+      "from": "check-changes",
+      "to": "send-alert"
+    },
+    {
+      "from": "send-alert",
+      "to": "email-alert",
+      "condition": "changed === true"
+    }
+  ]
+}
+

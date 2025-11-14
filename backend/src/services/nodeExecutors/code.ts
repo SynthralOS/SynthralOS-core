@@ -1,5 +1,9 @@
 import { NodeExecutionContext, NodeExecutionResult } from '@sos/shared';
 import { VM } from 'vm2';
+import { codeValidationService } from '../codeValidationService';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { runtimeRouter } from '../runtimeRouter';
+import { codeExecutionLogger } from '../codeExecutionLogger';
 
 // Security: Dangerous Python packages/modules to block
 const BLOCKED_PACKAGES = [
@@ -82,36 +86,258 @@ function validatePythonCode(code: string, packages: string[]): { valid: boolean;
 
 export async function executeCode(
   context: NodeExecutionContext,
-  language: 'javascript' | 'python'
+  language: 'javascript' | 'python' | 'typescript' | 'bash'
 ): Promise<NodeExecutionResult> {
-  const { input, config } = context;
+  const { input, config, workflowId, nodeId, executionId } = context;
   const nodeConfig = config as any;
   const code = nodeConfig.code || '';
+  const startTime = Date.now();
+  const runtime = nodeConfig.runtime || 'vm2';
 
-  if (!code) {
+  const tracer = trace.getTracer('sos-code-executor');
+  const span = tracer.startSpan('code.execute', {
+    attributes: {
+      'code.language': language,
+      'code.runtime': runtime,
+      'code.has_input_schema': !!nodeConfig.inputSchema,
+      'code.has_output_schema': !!nodeConfig.outputSchema,
+      'node.id': nodeId || '',
+      'workflow.id': workflowId || '',
+      'workflow.execution_id': executionId || '',
+    },
+  });
+
+  let result: NodeExecutionResult;
+  let validationPassed: boolean | undefined;
+  let errorMessage: string | undefined;
+
+  try {
+    if (!code) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Code is required' });
+      return {
+        success: false,
+        error: {
+          message: 'Code is required',
+          code: 'MISSING_CODE',
+        },
+      };
+    }
+
+    // Validate input schema if provided
+    if (nodeConfig.inputSchema) {
+      const validation = await codeValidationService.validateCodeExecution(
+        language,
+        input,
+        undefined, // No output yet
+        nodeConfig.inputSchema,
+        undefined,
+        nodeConfig.validationType || (language === 'python' ? 'pydantic' : 'zod')
+      );
+
+      validationPassed = validation.valid;
+
+      if (!validation.valid) {
+        span.setAttributes({
+          'code.validation_passed': false,
+          'code.validation_errors': validation.errors?.length || 0,
+        });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Input validation failed' });
+        errorMessage = `Input validation failed: ${validation.errors?.join(', ')}`;
+        return {
+          success: false,
+          error: {
+            message: errorMessage,
+            code: 'VALIDATION_ERROR',
+            details: validation.errors,
+          },
+        };
+      }
+      span.setAttributes({ 'code.validation_passed': true });
+    }
+
+    // Route to appropriate runtime if auto-routing is enabled
+    const requestedRuntime = nodeConfig.runtime || 'auto';
+    let actualRuntime = requestedRuntime === 'auto' ? 'vm2' : requestedRuntime;
+    
+    if (requestedRuntime === 'auto' || requestedRuntime === 'e2b' || requestedRuntime === 'wasmedge' || requestedRuntime === 'bacalhau') {
+      // Use runtime router for advanced runtimes
+      const packages = nodeConfig.packages || [];
+      const timeout = nodeConfig.timeout || 30000;
+      
+      result = await runtimeRouter.route({
+        runtime: requestedRuntime === 'auto' ? undefined : requestedRuntime,
+        language,
+        code,
+        input,
+        packages,
+        timeout,
+        requiresSandbox: nodeConfig.requiresSandbox,
+        longJob: nodeConfig.longJob,
+        expectedDuration: nodeConfig.expectedDuration,
+      });
+      
+      // Update actual runtime based on router decision
+      if (requestedRuntime === 'auto') {
+        actualRuntime = (result as any).runtime || 'vm2';
+      }
+    } else {
+      // Use default execution (VM2/subprocess)
+      if (language === 'javascript') {
+        result = executeJavaScript(code, input);
+      } else if (language === 'python') {
+        const packages = nodeConfig.packages || [];
+        const timeout = nodeConfig.timeout || 30000;
+        result = await executePython(code, input, { packages, timeout });
+      } else if (language === 'typescript') {
+        // Compile TypeScript to JavaScript
+        const ts = await import('typescript');
+        const jsCode = ts.transpile(code, {
+          target: ts.ScriptTarget.ES2020,
+          module: ts.ModuleKind.CommonJS,
+        });
+        result = executeJavaScript(jsCode, input);
+      } else if (language === 'bash') {
+        result = await executeBash(code, input, nodeConfig.timeout || 30000);
+      } else {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `Unsupported language: ${language}` });
+        return {
+          success: false,
+          error: {
+            message: `Unsupported language: ${language}`,
+            code: 'UNSUPPORTED_LANGUAGE',
+          },
+        };
+      }
+    }
+
+    // Validate output schema if provided
+    if (result.success && nodeConfig.outputSchema) {
+      const validation = await codeValidationService.validateCodeExecution(
+        language,
+        input,
+        result.output,
+        nodeConfig.inputSchema,
+        nodeConfig.outputSchema,
+        nodeConfig.validationType || (language === 'python' ? 'pydantic' : 'zod')
+      );
+
+      validationPassed = validation.valid;
+
+      if (!validation.valid) {
+        span.setAttributes({
+          'code.output_validation_passed': false,
+          'code.output_validation_errors': validation.errors?.length || 0,
+        });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Output validation failed' });
+        errorMessage = `Output validation failed: ${validation.errors?.join(', ')}`;
+        return {
+          success: false,
+          error: {
+            message: errorMessage,
+            code: 'OUTPUT_VALIDATION_ERROR',
+            details: validation.errors,
+          },
+        };
+      }
+      span.setAttributes({ 'code.output_validation_passed': true });
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    // Extract memory and token usage from result metadata if available
+    const memoryMb = (result as any).metadata?.memoryMb || (result as any).memoryMb;
+    const tokensUsed = (result as any).metadata?.tokensUsed || (result as any).tokensUsed;
+    const exitCode = (result as any).metadata?.exitCode || (result as any).exitCode;
+
+    span.setAttributes({
+      'code.success': result.success,
+      'code.has_error': !!result.error,
+      'code.duration_ms': durationMs,
+      'code.runtime': actualRuntime,
+      'code.language': language,
+      'code.validation_passed': validationPassed !== undefined ? validationPassed : null,
+      ...(memoryMb !== undefined && { 'code.memory_mb': memoryMb }),
+      ...(tokensUsed !== undefined && { 'code.tokens_used': tokensUsed }),
+      ...(exitCode !== undefined && { 'code.exit_code': exitCode }),
+    });
+    span.setStatus({ code: result.success ? SpanStatusCode.OK : SpanStatusCode.ERROR });
+
+    // Log execution to database (async, don't wait)
+    const codeAgentId = (nodeConfig as any).codeAgentId;
+    const organizationId = (context as any).organizationId;
+    const workspaceId = (context as any).workspaceId;
+    const userId = (context as any).userId;
+
+    codeExecutionLogger.logExecution({
+      codeAgentId,
+      workflowExecutionId: executionId,
+      nodeId,
+      runtime: actualRuntime,
+      language,
+      durationMs,
+      memoryMb: memoryMb,
+      exitCode: exitCode,
+      success: result.success,
+      errorMessage: result.error?.message || errorMessage,
+      tokensUsed: tokensUsed,
+      validationPassed,
+      organizationId,
+      workspaceId,
+      userId,
+    }).catch((err: any) => {
+      // Log error but don't fail execution
+      console.error('Failed to log code execution:', err);
+    });
+
+    return result;
+  } catch (error: any) {
+    const durationMs = Date.now() - startTime;
+    errorMessage = error.message || 'Code execution failed';
+
+    span.recordException(error);
+    span.setAttributes({
+      'code.duration_ms': durationMs,
+      'code.success': false,
+      'code.runtime': actualRuntime,
+      'code.language': language,
+      'code.validation_passed': validationPassed !== undefined ? validationPassed : null,
+    });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage });
+
+    // Log failed execution to database
+    const codeAgentId = (nodeConfig as any).codeAgentId;
+    const organizationId = (context as any).organizationId;
+    const workspaceId = (context as any).workspaceId;
+    const userId = (context as any).userId;
+
+    codeExecutionLogger.logExecution({
+      codeAgentId,
+      workflowExecutionId: executionId,
+      nodeId,
+      runtime: actualRuntime,
+      language,
+      durationMs,
+      success: false,
+      errorMessage,
+      tokensUsed: undefined,
+      validationPassed,
+      organizationId,
+      workspaceId,
+      userId,
+    }).catch((err: any) => {
+      console.error('Failed to log code execution error:', err);
+    });
+
     return {
       success: false,
       error: {
-        message: 'Code is required',
-        code: 'MISSING_CODE',
+        message: errorMessage,
+        code: 'EXECUTION_ERROR',
+        details: error,
       },
     };
-  }
-
-  if (language === 'javascript') {
-    return executeJavaScript(code, input);
-  } else if (language === 'python') {
-    const packages = nodeConfig.packages || [];
-    const timeout = nodeConfig.timeout || 30000;
-    return await executePython(code, input, { packages, timeout });
-  } else {
-    return {
-      success: false,
-      error: {
-        message: `Unsupported language: ${language}`,
-        code: 'UNSUPPORTED_LANGUAGE',
-      },
-    };
+  } finally {
+    span.end();
   }
 }
 
@@ -438,6 +664,151 @@ except Exception as e:
       error: {
         message: error.message || 'Python execution failed',
         code: 'PYTHON_EXECUTION_ERROR',
+        details: error,
+      },
+    };
+  }
+}
+
+/**
+ * Execute Bash code
+ */
+async function executeBash(
+  code: string,
+  input: Record<string, unknown>,
+  timeout: number = 30000
+): Promise<NodeExecutionResult> {
+  const { spawn } = await import('child_process');
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const os = await import('os');
+
+  const tempDir = os.tmpdir();
+  const execId = `bash-exec-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const tempFile = path.join(tempDir, `${execId}.sh`);
+
+  try {
+    // Wrap code to handle input/output
+    const wrappedCode = `#!/bin/bash
+set -e
+
+# Input data as environment variables
+${Object.entries(input)
+  .map(([key, value]) => `export INPUT_${key}='${JSON.stringify(value).replace(/'/g, "'\\''")}'`)
+  .join('\n')}
+
+# Execute user code
+${code}
+
+# Output result (if RESULT variable is set, use it; otherwise use input)
+if [ -z "$RESULT" ]; then
+  RESULT='${JSON.stringify(input).replace(/'/g, "'\\''")}'
+fi
+
+echo "$RESULT"
+`;
+
+    await fs.writeFile(tempFile, wrappedCode, { mode: 0o755 });
+
+    const bashProcess = spawn('bash', [tempFile], {
+      timeout,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PATH: '/usr/bin:/bin:/usr/local/bin',
+      },
+      cwd: tempDir,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    bashProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    bashProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        bashProcess.kill('SIGTERM');
+        reject(new Error(`Bash execution timed out after ${timeout}ms`));
+      }, timeout);
+
+      bashProcess.on('close', (code) => {
+        clearTimeout(timeoutId);
+        resolve(code || 0);
+      });
+
+      bashProcess.on('error', (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
+
+    // Clean up
+    await fs.unlink(tempFile).catch(() => {});
+
+    if (exitCode !== 0) {
+      return {
+        success: false,
+        error: {
+          message: stderr || 'Bash execution failed',
+          code: 'BASH_EXECUTION_ERROR',
+          details: { exitCode, stderr, stdout },
+        },
+      };
+    }
+
+    // Parse output
+    let result;
+    try {
+      const output = stdout.trim();
+      if (!output) {
+        result = input;
+      } else {
+        result = JSON.parse(output);
+      }
+    } catch {
+      result = stdout.trim() || input;
+    }
+
+    return {
+      success: true,
+      output: {
+        output: result,
+      },
+    };
+  } catch (error: any) {
+    await fs.unlink(tempFile).catch(() => {});
+
+    if (error.code === 'ENOENT') {
+      return {
+        success: false,
+        error: {
+          message: 'Bash is not installed or not in PATH',
+          code: 'BASH_NOT_FOUND',
+        },
+      };
+    }
+
+    if (error.message?.includes('timed out')) {
+      return {
+        success: false,
+        error: {
+          message: error.message,
+          code: 'BASH_TIMEOUT',
+        },
+      };
+    }
+
+    return {
+      success: false,
+      error: {
+        message: error.message || 'Bash execution failed',
+        code: 'BASH_EXECUTION_ERROR',
         details: error,
       },
     };

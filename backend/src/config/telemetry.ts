@@ -40,13 +40,15 @@ export function initializeTelemetry(): void {
 
   try {
     // Create resource with service information
-    const resource = new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: OTEL_SERVICE_NAME,
-      [SemanticResourceAttributes.SERVICE_VERSION]: OTEL_SERVICE_VERSION,
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: OTEL_ENVIRONMENT,
-      'service.namespace': 'sos',
-      'service.instance.id': process.env.HOSTNAME || 'unknown',
-    });
+    const resource = Resource.default().merge(
+      new Resource({
+        [SemanticResourceAttributes.SERVICE_NAME]: OTEL_SERVICE_NAME,
+        [SemanticResourceAttributes.SERVICE_VERSION]: OTEL_SERVICE_VERSION,
+        [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: OTEL_ENVIRONMENT,
+        'service.namespace': 'sos',
+        'service.instance.id': process.env.HOSTNAME || 'unknown',
+      })
+    );
 
     // Create trace exporter
     const traceExporter = OTEL_EXPORTER_OTLP_TRACES_ENDPOINT

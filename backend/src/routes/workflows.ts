@@ -32,6 +32,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const search = req.query.search as string | undefined;
     const tags = req.query.tags as string | undefined; // Comma-separated tags
     const tagArray = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
 
     // Build where conditions
     const conditions = [eq(organizationMembers.userId, req.user.id)];
@@ -77,7 +78,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       .innerJoin(organizations, eq(workspaces.organizationId, organizations.id))
       .innerJoin(organizationMembers, eq(organizations.id, organizationMembers.organizationId))
       .where(and(...conditions))
-      .orderBy(desc(workflows.updatedAt));
+      .orderBy(desc(workflows.updatedAt))
+      .limit(limit || 1000); // Default limit to prevent excessive data
 
     res.json(workflowsList);
   } catch (error) {

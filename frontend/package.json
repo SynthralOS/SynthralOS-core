@@ -12,6 +12,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.0.0",
     "@hookform/resolvers": "^3.3.2",
+    "@monaco-editor/react": "^4.7.0",
     "@paralleldrive/cuid2": "^2.2.2",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
@@ -21,6 +22,7 @@
     "clsx": "^2.0.0",
     "date-fns": "^3.0.6",
     "lucide-react": "^0.303.0",
+    "monaco-editor": "^0.54.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.49.2",

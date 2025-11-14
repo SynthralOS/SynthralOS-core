@@ -1,0 +1,65 @@
+{
+  "name": "Content Aggregation Workflow",
+  "description": "Scrape news articles and store in vector database for RAG",
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "type": "trigger.schedule",
+      "data": {
+        "type": "trigger.schedule",
+        "config": {
+          "cron": "0 */6 * * *",
+          "timezone": "UTC"
+        }
+      },
+      "position": { "x": 100, "y": 100 }
+    },
+    {
+      "id": "scrape-1",
+      "type": "action.web_scrape",
+      "data": {
+        "type": "action.web_scrape",
+        "config": {
+          "url": "https://news.example.com/latest",
+          "selectors": {
+            "title": "article h2",
+            "content": "article .content",
+            "author": "article .author",
+            "published": "article time"
+          }
+        }
+      },
+      "position": { "x": 300, "y": 100 }
+    },
+    {
+      "id": "transform-1",
+      "type": "action.transform",
+      "data": {
+        "type": "action.transform",
+        "config": {
+          "transform": "return { text: `${input.title}\n\n${input.content}`, metadata: { author: input.author, published: input.published } }"
+        }
+      },
+      "position": { "x": 500, "y": 100 }
+    },
+    {
+      "id": "rag-1",
+      "type": "ai.document_ingest",
+      "data": {
+        "type": "ai.document_ingest",
+        "config": {
+          "indexName": "news-articles",
+          "text": "{{transform-1.output.text}}",
+          "metadata": "{{transform-1.output.metadata}}"
+        }
+      },
+      "position": { "x": 700, "y": 100 }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "scrape-1" },
+    { "id": "e2", "source": "scrape-1", "target": "transform-1" },
+    { "id": "e3", "source": "transform-1", "target": "rag-1" }
+  ]
+}
+

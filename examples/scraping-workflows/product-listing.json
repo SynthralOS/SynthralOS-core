@@ -1,0 +1,58 @@
+{
+  "name": "Product Listing Scraper",
+  "description": "Scrape product listings from an e-commerce website",
+  "trigger": {
+    "type": "trigger.manual",
+    "config": {}
+  },
+  "nodes": [
+    {
+      "id": "scrape-products",
+      "type": "action.web_scrape",
+      "config": {
+        "url": "https://example.com/products",
+        "selectors": {
+          "products": ".product-item",
+          "title": ".product-title",
+          "price": ".product-price",
+          "image": ".product-image",
+          "link": ".product-link"
+        },
+        "extractText": true,
+        "extractAttributes": ["href", "src"],
+        "renderJavaScript": true,
+        "waitForSelector": ".product-list",
+        "scrollToBottom": true
+      }
+    },
+    {
+      "id": "process-data",
+      "type": "action.transform",
+      "config": {
+        "transform": "javascript",
+        "code": "// Process scraped products\nconst products = input.products || [];\nreturn products.map(product => ({\n  title: product.title,\n  price: parseFloat(product.price.replace(/[^0-9.]/g, '')),\n  image: product.image,\n  link: product.link\n}));"
+      }
+    },
+    {
+      "id": "save-data",
+      "type": "action.airtable",
+      "config": {
+        "action": "create_records",
+        "baseId": "{{AIRTABLE_BASE_ID}}",
+        "tableName": "Products",
+        "records": "{{process-data.output}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "scrape-products",
+      "to": "process-data"
+    },
+    {
+      "from": "process-data",
+      "to": "save-data"
+    }
+  ]
+}
+

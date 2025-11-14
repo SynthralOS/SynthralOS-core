@@ -1,105 +1,54 @@
-# Phase 4 Progress - PostHog Enhancement & RudderStack Integration
+# Phase 4: Proxy Infrastructure - PROGRESS
 
 **Date:** 2024-12-19  
-**Status:** 🚧 **IN PROGRESS**
+**Status:** 🟡 **IN PROGRESS** - Database schema complete
 
 ---
 
 ## ✅ Completed Tasks
 
-### Phase 4.1: Enhance PostHog Event Tracking
-
-1. ✅ **Added new event tracking methods to PostHog service:**
-   - `trackFlowExecuted()` - Workflow execution events
-   - `trackToolUsed()` - Tool usage events
-   - `trackAgentCreated()` - Agent creation events
-   - `trackPromptBlocked()` - Guardrails prompt blocking events
-   - `trackRAGQueryTriggered()` - RAG query events
-
-2. ✅ **Integrated into workflow executor:**
-   - `flow_executed` event tracked on workflow completion/failure
-   - Collects tools used from node types
-   - Includes trace ID, latency, success status
-
-3. ✅ **Integrated into node executor:**
-   - `tool_used` event tracked for each node execution
-   - Includes tool ID, type, status, latency
-   - Linked to execution ID and trace ID
-
-4. ✅ **Integrated into RAG executor:**
-   - `rag_query_triggered` event tracked on RAG queries
-   - Includes vector DB, index name, sources found, latency
+### 4.1 Database Schema for Proxies ✅
+- ✅ **4.1.1** Created proxy_pools table schema
+- ✅ **4.1.2** Created proxy_logs table schema
+- ✅ **4.1.3** Created proxy_scores table schema
+- ✅ **4.1.4** Added tables to schema.ts
+- ✅ **Migration Generated:** `0014_friendly_preak.sql`
 
 ---
 
-## ⏭️ Remaining Tasks
+## 📊 Database Schema
 
-### Phase 4.1 (Continue)
-- [ ] Integrate `agent_created` event into agent executor
-- [ ] Integrate `prompt_blocked` event into guardrails service
+### proxy_pools
+- Stores proxy configurations
+- Fields: id, organizationId, name, type, provider, host, port, username, password, country, city, isActive, maxConcurrent, metadata
+- Indexes: organizationId, type, country, isActive, createdAt
 
-### Phase 4.2: Implement Feature Flags
-- [ ] Integrate PostHog feature flags
-- [ ] Add flags: `enable_guardrails_tracing`, `track_model_costs`, `agent_debugger_ui`, `versioned_rag_tracking`
-- [ ] Create feature flag service wrapper
-- [ ] Add feature flag checks in relevant code paths
+### proxy_logs
+- Logs proxy usage and performance
+- Fields: id, proxyId, organizationId, workspaceId, userId, url, status, statusCode, latencyMs, banReason, errorMessage, metadata
+- Indexes: proxyId, organizationId, workspaceId, userId, status, createdAt
 
-### Phase 4.3: Set Up RudderStack
-- [ ] Install RudderStack SDK
-- [ ] Configure RudderStack destination (Snowflake/BigQuery)
-- [ ] Create event mapping service
-- [ ] Set up CDC streams from Supabase (if using Supabase CDC)
-
-### Phase 4.4: Create Event Forwarding Service
-- [ ] Create `backend/src/services/rudderstackService.ts`
-- [ ] Forward Supabase events to RudderStack
-- [ ] Forward PostHog events to RudderStack
-- [ ] Map events to unified analytics schema
-- [ ] Ensure `trace_id`, `user_id`, `workspace_id` are included
-
-### Phase 4.5: Set Up Analytics Pipeline
-- [ ] Configure Snowflake/BigQuery destination
-- [ ] Create unified analytics schema
-- [ ] Set up data transformation rules
-- [ ] Test end-to-end event flow
+### proxy_scores
+- Tracks proxy performance scores
+- Fields: id, proxyId, organizationId, score, successRate, avgLatencyMs, banRate, totalRequests, successfulRequests, failedRequests, bannedRequests, lastUsedAt, lastScoredAt
+- Indexes: proxyId, organizationId, score, lastScoredAt
 
 ---
 
-## 📊 Event Tracking Summary
+## 🎯 Next Steps
 
-| Event | Status | Integrated In | Properties |
-|-------|--------|---------------|------------|
-| `flow_executed` | ✅ | Workflow Executor | flow_id, tools_used, time_ms, success, trace_id |
-| `tool_used` | ✅ | Node Executor | tool_id, tool_type, status, latency_ms, trace_id |
-| `rag_query_triggered` | ✅ | RAG Executor | vector_db_used, index_name, latency_ms, sources_found |
-| `agent_created` | ⏳ | Agent Executor | agent_type, memory_backend, framework |
-| `prompt_blocked` | ⏳ | Guardrails Service | match_score, source, reason |
-| `agent_execution` | ✅ | Agent Executor | (existing) |
-| `agent_error` | ✅ | Agent Executor | (existing) |
+### 4.2 Proxy Service
+- [ ] **4.2.1** Create proxy service file
+- [ ] **4.2.2** Implement proxy rotation logic
+- [ ] **4.2.3** Implement proxy scoring
+- [ ] **4.2.4** Implement proxy validation
+- [ ] **4.2.5** Add geolocation filtering
 
----
-
-## Files Modified
-
-**Created:**
-- None yet
-
-**Modified:**
-- `backend/src/services/posthogService.ts` - Added 5 new event tracking methods
-- `backend/src/services/workflowExecutor.ts` - Added flow_executed tracking
-- `backend/src/services/workflowExecutor.ts` - Added tool_used tracking in executeNode
-- `backend/src/services/nodeExecutors/rag.ts` - Added rag_query_triggered tracking
+### 4.3 Proxy Integration with Scraper
+- [ ] **4.3.1** Integrate proxy service with scraper
+- [ ] **4.3.2** Handle proxy failures
+- [ ] **4.3.3** Implement automatic proxy switching
 
 ---
 
-## Next Steps
-
-1. Complete agent_created integration
-2. Complete prompt_blocked integration
-3. Implement feature flags
-4. Set up RudderStack
-
----
-
-**Status:** 🚧 **IN PROGRESS** (Phase 4.1 partially complete)
-
+**Last Updated:** 2024-12-19

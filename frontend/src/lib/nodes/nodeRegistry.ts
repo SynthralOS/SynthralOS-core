@@ -299,6 +299,139 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
       },
     },
   },
+  'action.web_scrape': {
+    type: 'action.web_scrape',
+    name: 'Web Scrape',
+    description: 'Extract data from web pages using CSS selectors',
+    category: 'action',
+    icon: 'globe',
+    inputs: [
+      { name: 'url', type: 'string', required: true, description: 'URL to scrape' },
+      { name: 'selectors', type: 'object', description: 'CSS selectors for data extraction (key: field name, value: CSS selector)' },
+      { name: 'extractText', type: 'boolean', description: 'Extract text content (default: true)' },
+      { name: 'extractHtml', type: 'boolean', description: 'Extract raw HTML (default: false)' },
+      { name: 'extractAttributes', type: 'array', description: 'Extract specific attributes (e.g., ["href", "src"])' },
+      { name: 'timeout', type: 'number', description: 'Request timeout in milliseconds' },
+      { name: 'headers', type: 'object', description: 'Custom HTTP headers' },
+      { name: 'userAgent', type: 'string', description: 'Custom user agent' },
+      { name: 'renderJavaScript', type: 'boolean', description: 'Use Puppeteer for JavaScript rendering' },
+      { name: 'waitForSelector', type: 'string', description: 'CSS selector to wait for (Puppeteer only)' },
+      { name: 'executeJavaScript', type: 'string', description: 'Custom JavaScript to execute (Puppeteer only)' },
+      { name: 'scrollToBottom', type: 'boolean', description: 'Scroll to bottom to load content (Puppeteer only)' },
+      { name: 'screenshot', type: 'boolean', description: 'Take screenshot (Puppeteer only)' },
+    ],
+    outputs: [
+      { name: 'data', type: 'object', description: 'Extracted data based on selectors' },
+      { name: 'html', type: 'string', description: 'Raw HTML (if extractHtml is true)' },
+      { name: 'screenshot', type: 'string', description: 'Base64 screenshot (if screenshot is true, Puppeteer only)' },
+      { name: 'url', type: 'string', description: 'Scraped URL' },
+      { name: 'metadata', type: 'object', description: 'Scraping metadata (latency, content length, engine, etc.)' },
+    ],
+    config: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL to scrape',
+          default: '',
+        },
+        selectors: {
+          type: 'object',
+          description: 'CSS selectors for data extraction',
+          additionalProperties: {
+            type: 'string',
+          },
+          default: {},
+        },
+        extractText: {
+          type: 'boolean',
+          description: 'Extract text content',
+          default: true,
+        },
+        extractHtml: {
+          type: 'boolean',
+          description: 'Extract raw HTML',
+          default: false,
+        },
+        extractAttributes: {
+          type: 'array',
+          description: 'Extract specific attributes',
+          items: {
+            type: 'string',
+          },
+          default: [],
+        },
+        timeout: {
+          type: 'number',
+          description: 'Request timeout in milliseconds',
+          default: 30000,
+        },
+        headers: {
+          type: 'object',
+          description: 'Custom HTTP headers',
+          additionalProperties: {
+            type: 'string',
+          },
+          default: {},
+        },
+        userAgent: {
+          type: 'string',
+          description: 'Custom user agent',
+          default: 'SynthralOS/1.0 (Web Scraper)',
+        },
+        retries: {
+          type: 'number',
+          description: 'Number of retries on failure',
+          default: 2,
+        },
+        retryDelay: {
+          type: 'number',
+          description: 'Delay between retries in milliseconds',
+          default: 1000,
+        },
+        renderJavaScript: {
+          type: 'boolean',
+          description: 'Use Puppeteer for JavaScript rendering (auto-detected if not set)',
+          default: undefined,
+        },
+        waitForSelector: {
+          type: 'string',
+          description: 'CSS selector to wait for before scraping (Puppeteer only)',
+          default: '',
+        },
+        waitForTimeout: {
+          type: 'number',
+          description: 'Timeout for waitForSelector in milliseconds',
+          default: 30000,
+        },
+        executeJavaScript: {
+          type: 'string',
+          description: 'Custom JavaScript to execute in page context (Puppeteer only)',
+          default: '',
+        },
+        scrollToBottom: {
+          type: 'boolean',
+          description: 'Scroll to bottom to load dynamic content (Puppeteer only)',
+          default: false,
+        },
+        viewport: {
+          type: 'object',
+          description: 'Viewport dimensions (Puppeteer only)',
+          properties: {
+            width: { type: 'number', default: 1920 },
+            height: { type: 'number', default: 1080 },
+          },
+          default: undefined,
+        },
+        screenshot: {
+          type: 'boolean',
+          description: 'Take screenshot of the page (Puppeteer only)',
+          default: false,
+        },
+      },
+      required: ['url'],
+    },
+  },
   'action.code': {
     type: 'action.code',
     name: 'Code (JavaScript)',
@@ -353,6 +486,116 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           description: 'Python packages to install (e.g., ["pandas", "numpy"]). One package per line.',
           default: [],
           format: 'packages',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Execution timeout in milliseconds',
+          default: 30000,
+          minimum: 1000,
+          maximum: 300000,
+        },
+        runtime: {
+          type: 'string',
+          enum: ['auto', 'vm2', 'e2b', 'wasmedge', 'bacalhau', 'subprocess'],
+          default: 'auto',
+          description: 'Runtime to use for execution (auto = intelligent routing)',
+        },
+        requiresSandbox: {
+          type: 'boolean',
+          default: false,
+          description: 'Require secure sandbox isolation',
+        },
+        longJob: {
+          type: 'boolean',
+          default: false,
+          description: 'Long-running job (will route to distributed runtime)',
+        },
+        expectedDuration: {
+          type: 'number',
+          default: 0,
+          description: 'Expected execution duration in milliseconds (for routing optimization)',
+        },
+        inputSchema: {
+          type: 'object',
+          description: 'Input schema for validation (Zod/Pydantic)',
+        },
+        outputSchema: {
+          type: 'object',
+          description: 'Output schema for validation (Zod/Pydantic)',
+        },
+        validationType: {
+          type: 'string',
+          enum: ['zod', 'pydantic'],
+          default: 'pydantic',
+          description: 'Validation type (zod for JS/TS, pydantic for Python)',
+        },
+      },
+      required: ['code'],
+    },
+  },
+  'action.code.typescript': {
+    type: 'action.code.typescript',
+    name: 'Code (TypeScript)',
+    description: 'Execute TypeScript code (compiled to JavaScript)',
+    category: 'code',
+    icon: 'code',
+    inputs: [
+      { name: 'input', type: 'any', description: 'Input data' },
+    ],
+    outputs: [
+      { name: 'output', type: 'any', description: 'Code output' },
+      { name: 'error', type: 'object', description: 'Error output (if code execution fails)' },
+    ],
+    config: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          description: 'TypeScript code to execute',
+          default: '// Your code here\nreturn input;',
+          format: 'code',
+          language: 'typescript',
+        },
+        inputSchema: {
+          type: 'object',
+          description: 'Input schema for validation (Zod)',
+        },
+        outputSchema: {
+          type: 'object',
+          description: 'Output schema for validation (Zod)',
+        },
+        validationType: {
+          type: 'string',
+          enum: ['zod'],
+          default: 'zod',
+          description: 'Validation type',
+        },
+      },
+      required: ['code'],
+    },
+  },
+  'action.code.bash': {
+    type: 'action.code.bash',
+    name: 'Code (Bash)',
+    description: 'Execute Bash shell script',
+    category: 'code',
+    icon: 'code',
+    inputs: [
+      { name: 'input', type: 'any', description: 'Input data' },
+    ],
+    outputs: [
+      { name: 'output', type: 'any', description: 'Code output' },
+      { name: 'error', type: 'object', description: 'Error output (if code execution fails)' },
+    ],
+    config: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          description: 'Bash script to execute',
+          default: '#!/bin/bash\n# Your code here\necho "Hello from Bash"',
+          format: 'code',
+          language: 'bash',
         },
         timeout: {
           type: 'number',
@@ -551,6 +794,10 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           default: 'fixed',
           description: 'Chunking strategy',
         },
+        preIngestHook: {
+          type: 'string',
+          description: 'Code agent ID for pre-ingest transformation (runs before document chunking)',
+        },
       },
       required: ['chunkSize'],
     },
@@ -645,6 +892,10 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           description: 'RAG prompt template',
           format: 'code',
           default: 'Use the following context to answer the question:\n\nContext:\n{{context}}\n\nQuestion: {{query}}\n\nAnswer:',
+        },
+        postAnswerHook: {
+          type: 'string',
+          description: 'Code agent ID for post-answer enhancement (runs after LLM generates answer)',
         },
       },
       required: ['vectorStoreProvider', 'llmProvider'],

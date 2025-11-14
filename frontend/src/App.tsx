@@ -30,6 +30,7 @@ import CopilotAgent from './pages/CopilotAgent';
 import ObservabilityDashboard from './pages/ObservabilityDashboard';
 import AgentCatalogue from './pages/AgentCatalogue';
 import ConnectorMarketplace from './pages/ConnectorMarketplace';
+import SandboxStudio from './pages/SandboxStudio';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Privacy from './pages/Privacy';
@@ -130,6 +131,7 @@ function App() {
               <Route path="agents/copilot" element={<CopilotAgent />} />
               <Route path="agents/catalogue" element={<AgentCatalogue />} />
               <Route path="connectors" element={<ConnectorMarketplace />} />
+              <Route path="sandbox" element={<SandboxStudio />} />
               <Route path="observability" element={<ObservabilityDashboard />} />
             </Route>
           </Routes>

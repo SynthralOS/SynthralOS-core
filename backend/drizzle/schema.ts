@@ -815,3 +815,258 @@ export const featureFlags = pgTable('feature_flags', {
   workspaceIdIdx: index('feature_flags_workspace_id_idx').on(table.workspaceId),
 }));
 
+// Scraper Events (Phase 1: Web Scraping)
+export const scraperEvents = pgTable('scraper_events', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  engine: text('engine').notNull(), // 'cheerio', 'puppeteer', 'playwright', etc.
+  success: boolean('success').notNull(),
+  latencyMs: integer('latency_ms'), // Request latency in milliseconds
+  contentLength: integer('content_length'), // HTML content length
+  errorMessage: text('error_message'), // Error message if failed
+  metadata: jsonb('metadata'), // Additional metadata (selectors used, etc.)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('scraper_events_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('scraper_events_workspace_id_idx').on(table.workspaceId),
+  userIdIdx: index('scraper_events_user_id_idx').on(table.userId),
+  urlIdx: index('scraper_events_url_idx').on(table.url),
+  engineIdx: index('scraper_events_engine_idx').on(table.engine),
+  successIdx: index('scraper_events_success_idx').on(table.success),
+  createdAtIdx: index('scraper_events_created_at_idx').on(table.createdAt),
+}));
+
+// Proxy Pools (Phase 4: Proxy Infrastructure)
+export const proxyPools = pgTable('proxy_pools', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), // Pool name
+  type: text('type').notNull(), // 'residential', 'datacenter', 'mobile', 'isp'
+  provider: text('provider'), // 'brightdata', 'oxylabs', 'custom', etc.
+  host: text('host').notNull(), // Proxy host
+  port: integer('port').notNull(), // Proxy port
+  username: text('username'), // Proxy username (if required)
+  password: text('password'), // Proxy password (if required)
+  country: text('country'), // Country code (ISO 3166-1 alpha-2)
+  city: text('city'), // City name
+  isActive: boolean('is_active').default(true).notNull(),
+  maxConcurrent: integer('max_concurrent').default(10), // Max concurrent connections
+  metadata: jsonb('metadata'), // Additional metadata (provider-specific)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('proxy_pools_organization_id_idx').on(table.organizationId),
+  typeIdx: index('proxy_pools_type_idx').on(table.type),
+  countryIdx: index('proxy_pools_country_idx').on(table.country),
+  isActiveIdx: index('proxy_pools_is_active_idx').on(table.isActive),
+  createdAtIdx: index('proxy_pools_created_at_idx').on(table.createdAt),
+}));
+
+// Proxy Logs (Phase 4: Proxy Infrastructure)
+export const proxyLogs = pgTable('proxy_logs', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  proxyId: text('proxy_id').notNull().references(() => proxyPools.id, { onDelete: 'cascade' }),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(), // URL that was accessed
+  status: text('status').notNull(), // 'success', 'failed', 'banned', 'timeout'
+  statusCode: integer('status_code'), // HTTP status code
+  latencyMs: integer('latency_ms'), // Request latency in milliseconds
+  banReason: text('ban_reason'), // Reason for ban (if banned)
+  errorMessage: text('error_message'), // Error message (if failed)
+  metadata: jsonb('metadata'), // Additional metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  proxyIdIdx: index('proxy_logs_proxy_id_idx').on(table.proxyId),
+  organizationIdIdx: index('proxy_logs_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('proxy_logs_workspace_id_idx').on(table.workspaceId),
+  userIdIdx: index('proxy_logs_user_id_idx').on(table.userId),
+  statusIdx: index('proxy_logs_status_idx').on(table.status),
+  createdAtIdx: index('proxy_logs_created_at_idx').on(table.createdAt),
+}));
+
+// Proxy Scores (Phase 4: Proxy Infrastructure)
+export const proxyScores = pgTable('proxy_scores', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  proxyId: text('proxy_id').notNull().references(() => proxyPools.id, { onDelete: 'cascade' }),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  score: integer('score').notNull(), // Overall score (0-100)
+  successRate: integer('success_rate').notNull(), // Success rate (0-100)
+  avgLatencyMs: integer('avg_latency_ms'), // Average latency in milliseconds
+  banRate: integer('ban_rate').notNull(), // Ban rate (0-100)
+  totalRequests: integer('total_requests').default(0).notNull(),
+  successfulRequests: integer('successful_requests').default(0).notNull(),
+  failedRequests: integer('failed_requests').default(0).notNull(),
+  bannedRequests: integer('banned_requests').default(0).notNull(),
+  lastUsedAt: timestamp('last_used_at'), // Last time proxy was used
+  lastScoredAt: timestamp('last_scored_at').defaultNow().notNull(), // Last time score was calculated
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  proxyIdIdx: index('proxy_scores_proxy_id_idx').on(table.proxyId),
+  organizationIdIdx: index('proxy_scores_organization_id_idx').on(table.organizationId),
+  scoreIdx: index('proxy_scores_score_idx').on(table.score),
+  lastScoredAtIdx: index('proxy_scores_last_scored_at_idx').on(table.lastScoredAt),
+}));
+
+// Scraper Selectors (Phase 5: Self-Healing & Change Detection)
+export const scraperSelectors = pgTable('scraper_selectors', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(), // URL pattern or exact URL
+  fieldName: text('field_name').notNull(), // Field name for the selector
+  selector: text('selector').notNull(), // CSS selector or XPath
+  selectorType: text('selector_type').notNull().default('css'), // 'css' or 'xpath'
+  successCount: integer('success_count').default(0).notNull(), // Number of successful extractions
+  failureCount: integer('failure_count').default(0).notNull(), // Number of failed extractions
+  lastSuccessAt: timestamp('last_success_at'), // Last successful extraction
+  lastFailureAt: timestamp('last_failure_at'), // Last failed extraction
+  isActive: boolean('is_active').default(true).notNull(), // Whether selector is currently active
+  metadata: jsonb('metadata'), // Additional metadata (alternative selectors, etc.)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('scraper_selectors_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('scraper_selectors_workspace_id_idx').on(table.workspaceId),
+  urlIdx: index('scraper_selectors_url_idx').on(table.url),
+  fieldNameIdx: index('scraper_selectors_field_name_idx').on(table.fieldName),
+  isActiveIdx: index('scraper_selectors_is_active_idx').on(table.isActive),
+  createdAtIdx: index('scraper_selectors_created_at_idx').on(table.createdAt),
+}));
+
+// Change Detection (Phase 5: Self-Healing & Change Detection)
+export const changeDetection = pgTable('change_detection', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(), // URL being monitored
+  selector: text('selector'), // CSS selector to monitor (optional)
+  previousContent: text('previous_content'), // Previous HTML/content snapshot
+  previousHash: text('previous_hash'), // Hash of previous content
+  currentContent: text('current_content'), // Current HTML/content snapshot
+  currentHash: text('current_hash'), // Hash of current content
+  changeDetected: boolean('change_detected').default(false).notNull(), // Whether change was detected
+  changeType: text('change_type'), // 'added', 'removed', 'modified', 'structure'
+  changeDetails: jsonb('change_details'), // Details about the change
+  lastCheckedAt: timestamp('last_checked_at').defaultNow().notNull(), // Last time change was checked
+  lastChangedAt: timestamp('last_changed_at'), // Last time change was detected
+  isActive: boolean('is_active').default(true).notNull(), // Whether monitoring is active
+  checkInterval: integer('check_interval').default(3600), // Check interval in seconds
+  metadata: jsonb('metadata'), // Additional metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('change_detection_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('change_detection_workspace_id_idx').on(table.workspaceId),
+  userIdIdx: index('change_detection_user_id_idx').on(table.userId),
+  urlIdx: index('change_detection_url_idx').on(table.url),
+  changeDetectedIdx: index('change_detection_change_detected_idx').on(table.changeDetected),
+  isActiveIdx: index('change_detection_is_active_idx').on(table.isActive),
+  lastCheckedAtIdx: index('change_detection_last_checked_at_idx').on(table.lastCheckedAt),
+}));
+
+// Code Agents (Custom Code & Code Agents PRD)
+export const codeAgents = pgTable('code_agents', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  name: text('name').notNull(),
+  description: text('description'),
+  version: text('version').notNull().default('1.0.0'),
+  language: text('language').notNull(), // 'javascript' | 'python' | 'typescript' | 'bash'
+  code: text('code').notNull(),
+  codeStoragePath: text('code_storage_path'), // Supabase Storage path for large code blobs
+  inputSchema: jsonb('input_schema'), // Zod/Pydantic schema
+  outputSchema: jsonb('output_schema'), // Zod/Pydantic schema
+  runtime: text('runtime').notNull().default('vm2'), // 'vm2' | 'e2b' | 'wasmedge' | 'bacalhau' | 'subprocess'
+  packages: jsonb('packages').$type<string[]>(), // Python packages or npm packages
+  environment: jsonb('environment').$type<Record<string, string>>(), // Environment variables
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  isPublic: boolean('is_public').default(false).notNull(), // Whether agent is public in registry
+  usageCount: integer('usage_count').default(0).notNull(), // Number of times used
+  deprecated: boolean('deprecated').default(false).notNull(), // Whether agent is deprecated
+  changelog: jsonb('changelog').$type<Array<{ version: string; changes: string; date: string }>>(), // Version changelog
+  metadata: jsonb('metadata'), // Additional metadata (owner, license, scope, etc.)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('code_agents_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('code_agents_workspace_id_idx').on(table.workspaceId),
+  userIdIdx: index('code_agents_user_id_idx').on(table.userId),
+  nameIdx: index('code_agents_name_idx').on(table.name),
+  languageIdx: index('code_agents_language_idx').on(table.language),
+  isPublicIdx: index('code_agents_is_public_idx').on(table.isPublic),
+  deprecatedIdx: index('code_agents_deprecated_idx').on(table.deprecated),
+  createdAtIdx: index('code_agents_created_at_idx').on(table.createdAt),
+}));
+
+// Code Agent Versions
+export const codeAgentVersions = pgTable('code_agent_versions', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  codeAgentId: text('code_agent_id').notNull().references(() => codeAgents.id, { onDelete: 'cascade' }),
+  version: text('version').notNull(),
+  code: text('code').notNull(),
+  codeStoragePath: text('code_storage_path'),
+  inputSchema: jsonb('input_schema'),
+  outputSchema: jsonb('output_schema'),
+  changelog: jsonb('changelog').$type<Array<{ version: string; changes: string; date: string }>>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  codeAgentIdIdx: index('code_agent_versions_code_agent_id_idx').on(table.codeAgentId),
+  versionIdx: index('code_agent_versions_version_idx').on(table.version),
+  createdAtIdx: index('code_agent_versions_created_at_idx').on(table.createdAt),
+}));
+
+// Code Execution Logs
+export const codeExecLogs = pgTable('code_exec_logs', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  codeAgentId: text('code_agent_id').references(() => codeAgents.id, { onDelete: 'set null' }),
+  workflowExecutionId: text('workflow_execution_id').references(() => workflowExecutions.id, { onDelete: 'set null' }),
+  nodeId: text('node_id'), // Node ID in workflow
+  runtime: text('runtime').notNull(), // 'vm2' | 'e2b' | 'wasmedge' | 'bacalhau' | 'subprocess'
+  language: text('language').notNull(), // 'javascript' | 'python' | 'typescript' | 'bash'
+  durationMs: integer('duration_ms'), // Execution duration in milliseconds
+  memoryMb: integer('memory_mb'), // Memory usage in MB
+  exitCode: integer('exit_code'), // Exit code (0 for success)
+  success: boolean('success').notNull(), // Whether execution was successful
+  errorMessage: text('error_message'), // Error message if failed
+  tokensUsed: integer('tokens_used'), // Tokens used for AI-assisted code (if applicable)
+  validationPassed: boolean('validation_passed'), // Whether schema validation passed
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  codeAgentIdIdx: index('code_exec_logs_code_agent_id_idx').on(table.codeAgentId),
+  workflowExecutionIdIdx: index('code_exec_logs_workflow_execution_id_idx').on(table.workflowExecutionId),
+  runtimeIdx: index('code_exec_logs_runtime_idx').on(table.runtime),
+  languageIdx: index('code_exec_logs_language_idx').on(table.language),
+  successIdx: index('code_exec_logs_success_idx').on(table.success),
+  createdAtIdx: index('code_exec_logs_created_at_idx').on(table.createdAt),
+}));
+
+// Code Schemas (for validation)
+export const codeSchemas = pgTable('code_schemas', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  codeId: text('code_id').notNull(), // References code_agents.id or workflow node ID
+  codeType: text('code_type').notNull(), // 'code_agent' | 'workflow_node'
+  inputSchema: jsonb('input_schema'), // Zod/Pydantic schema JSON
+  outputSchema: jsonb('output_schema'), // Zod/Pydantic schema JSON
+  validationType: text('validation_type').notNull(), // 'zod' | 'pydantic'
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  codeIdIdx: index('code_schemas_code_id_idx').on(table.codeId),
+  codeTypeIdx: index('code_schemas_code_type_idx').on(table.codeType),
+  validationTypeIdx: index('code_schemas_validation_type_idx').on(table.validationType),
+  createdAtIdx: index('code_schemas_created_at_idx').on(table.createdAt),
+}));
+

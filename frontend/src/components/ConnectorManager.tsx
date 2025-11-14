@@ -95,11 +95,41 @@ export default function ConnectorManager({ onClose, onSelectConnector }: Connect
     return credentials?.some((c) => c.connectorId === connectorId) || false;
   };
 
-  const handleConnect = (connector: ConnectorManifest) => {
+  const handleConnect = async (connector: ConnectorManifest) => {
     if (connector.auth.type === 'oauth2') {
-      // For OAuth2, we'd open an OAuth flow
-      // For now, show a placeholder
-      alert(`OAuth connection for ${connector.name} - This will open an OAuth flow in a future update`);
+      try {
+        // Initiate OAuth flow
+        const response = await api.post(`/connectors/${connector.id}/connect`);
+        const data = response.data;
+        
+        if (data.authUrl) {
+          // Open OAuth flow in popup or redirect
+          const width = 600;
+          const height = 700;
+          const left = window.screen.width / 2 - width / 2;
+          const top = window.screen.height / 2 - height / 2;
+          
+          const oauthWindow = window.open(
+            data.authUrl,
+            'OAuth',
+            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+          );
+          
+          // Listen for OAuth callback
+          const checkOAuthCallback = setInterval(() => {
+            if (oauthWindow?.closed) {
+              clearInterval(checkOAuthCallback);
+              // Refetch credentials
+              queryClient.invalidateQueries({ queryKey: ['connectors', 'credentials'] });
+            }
+          }, 1000);
+        } else if (data.requiresManualSetup) {
+          alert(`Please configure ${connector.name} credentials manually. Auth type: ${data.authType}`);
+        }
+      } catch (error: any) {
+        console.error('Failed to connect:', error);
+        alert(`Failed to initiate connection: ${error.response?.data?.error || error.message}`);
+      }
     } else if (connector.auth.type === 'api_key') {
       setConnectingConnector(connector.id);
       setShowConnectModal(true);

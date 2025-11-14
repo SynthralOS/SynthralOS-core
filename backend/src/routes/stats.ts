@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { db } from '../config/database';
-import { workflowExecutions, workflows, workspaces, organizations, organizationMembers } from '../../drizzle/schema';
-import { eq, and, gte, lte, count, inArray, sql } from 'drizzle-orm';
+import { workflowExecutions, workflows, workspaces, organizations, organizationMembers, scraperEvents } from '../../drizzle/schema';
+import { eq, and, gte, lte, count, inArray, sql, desc } from 'drizzle-orm';
 import { cacheMiddleware } from '../middleware/cache';
 import { cacheService } from '../services/cacheService';
 import { subDays, format, startOfDay, endOfDay } from 'date-fns';
@@ -31,6 +31,12 @@ router.get('/', authenticate, cacheMiddleware({ ttl: 30, prefix: 'stats' }), asy
         executionsToday: 0,
         successRate: 0,
         activeWorkflows: 0,
+        scrapingStats: {
+          totalScrapes: 0,
+          scrapesToday: 0,
+          successRate: 0,
+          avgLatency: 0,
+        },
       });
     }
 
@@ -109,11 +115,54 @@ router.get('/', authenticate, cacheMiddleware({ ttl: 30, prefix: 'stats' }), asy
       ? Math.round((successfulExecutionsCount / totalExecutionsCount) * 100)
       : 0;
 
+    // Get scraping statistics
+    const [totalScrapes] = await db
+      .select({ count: count() })
+      .from(scraperEvents)
+      .where(inArray(scraperEvents.organizationId, orgIds));
+
+    const [scrapesToday] = await db
+      .select({ count: count() })
+      .from(scraperEvents)
+      .where(
+        and(
+          inArray(scraperEvents.organizationId, orgIds),
+          gte(scraperEvents.createdAt, today)
+        )
+      );
+
+    const [successfulScrapes] = await db
+      .select({ count: count() })
+      .from(scraperEvents)
+      .where(
+        and(
+          inArray(scraperEvents.organizationId, orgIds),
+          eq(scraperEvents.success, true)
+        )
+      );
+
+    const scrapingSuccessRate = totalScrapes.count > 0
+      ? Math.round((successfulScrapes.count / totalScrapes.count) * 100)
+      : 0;
+
+    const [avgLatencyResult] = await db
+      .select({ avg: sql<number>`AVG(${scraperEvents.latencyMs})` })
+      .from(scraperEvents)
+      .where(inArray(scraperEvents.organizationId, orgIds));
+
+    const avgLatency = avgLatencyResult?.avg ? Math.round(Number(avgLatencyResult.avg)) : 0;
+
     res.json({
       totalWorkflows: workflowsCount?.count || 0,
       activeWorkflows: activeWorkflowsCount?.count || 0,
       executionsToday: executionsTodayCount?.count || 0,
       successRate,
+      scrapingStats: {
+        totalScrapes: totalScrapes.count,
+        scrapesToday: scrapesToday.count,
+        successRate: scrapingSuccessRate,
+        avgLatency,
+      },
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -371,6 +420,44 @@ router.get('/chart', authenticate, cacheMiddleware({ ttl: 60, prefix: 'stats-cha
     res.json(chartData);
   } catch (error) {
     console.error('Error fetching chart data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get recent scraping events
+router.get('/scraping/events', authenticate, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Get user's organization IDs
+    const userOrgs = await db
+      .select({ organizationId: organizationMembers.organizationId })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, req.user.id));
+
+    const orgIds = userOrgs.map((org) => org.organizationId);
+
+    if (orgIds.length === 0) {
+      return res.json([]);
+    }
+
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const events = await db
+      .select()
+      .from(scraperEvents)
+      .where(inArray(scraperEvents.organizationId, orgIds))
+      .orderBy(desc(scraperEvents.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    res.json(events);
+  } catch (error) {
+    console.error('Error fetching scraping events:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

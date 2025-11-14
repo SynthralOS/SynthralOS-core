@@ -35,6 +35,8 @@ import connectorsRouter from './routes/connectors';
 import nangoRouter from './routes/nango';
 import earlyAccessRouter from './routes/earlyAccess';
 import contactRouter from './routes/contact';
+import codeAgentsRouter from './routes/codeAgents';
+import codeExecLogsRouter from './routes/codeExecLogs';
 import { scheduler } from './services/scheduler';
 import { permissionService } from './services/permissionService';
 import { websocketService } from './services/websocketService';
@@ -111,6 +113,8 @@ app.use('/api/v1/connectors', connectorsRouter);
 app.use('/api/v1/nango', nangoRouter);
 app.use('/api/v1/early-access', earlyAccessRouter);
 app.use('/api/v1/contact', contactRouter);
+app.use('/api/v1/code-agents', codeAgentsRouter);
+app.use('/api/v1/code-exec-logs', codeExecLogsRouter);
 app.use('/webhooks', webhooksRouter);
 
 app.get('/api/v1', (req, res) => {
@@ -200,6 +204,14 @@ httpServer.listen(PORT, async () => {
   } catch (error) {
     console.error('⚠️  Redis not available, caching disabled:', error);
   }
+
+  // Initialize Supabase Storage bucket for code agents
+  try {
+    const { storageService } = await import('./services/storageService');
+    await storageService.initializeBucket();
+  } catch (error) {
+    console.warn('⚠️  Supabase Storage initialization skipped:', error);
+  }
 });
 
 // Graceful shutdown
@@ -208,8 +220,10 @@ process.on('SIGTERM', async () => {
   await shutdownTelemetry();
   const { posthogService } = await import('./services/posthogService');
   const { rudderstackService } = await import('./services/rudderstackService');
+  const { scraperService } = await import('./services/scraperService');
   await posthogService.flush();
   await rudderstackService.shutdown();
+  await scraperService.cleanup(); // Cleanup browser pool
   process.exit(0);
 });
 
@@ -218,8 +232,10 @@ process.on('SIGINT', async () => {
   await shutdownTelemetry();
   const { posthogService } = await import('./services/posthogService');
   const { rudderstackService } = await import('./services/rudderstackService');
+  const { scraperService } = await import('./services/scraperService');
   await posthogService.flush();
   await rudderstackService.shutdown();
+  await scraperService.cleanup(); // Cleanup browser pool
   process.exit(0);
 });
 

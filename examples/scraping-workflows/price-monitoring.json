@@ -1,0 +1,67 @@
+{
+  "name": "Price Monitoring Workflow",
+  "description": "Monitor competitor prices and send alerts on changes",
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "type": "trigger.schedule",
+      "data": {
+        "type": "trigger.schedule",
+        "config": {
+          "cron": "0 9 * * *",
+          "timezone": "UTC"
+        }
+      },
+      "position": { "x": 100, "y": 100 }
+    },
+    {
+      "id": "scrape-1",
+      "type": "action.web_scrape",
+      "data": {
+        "type": "action.web_scrape",
+        "config": {
+          "url": "https://competitor.com/pricing",
+          "selectors": {
+            "plan_name": ".plan-name",
+            "price": ".price",
+            "features": ".features-list li"
+          },
+          "extractText": true
+        }
+      },
+      "position": { "x": 300, "y": 100 }
+    },
+    {
+      "id": "llm-1",
+      "type": "ai.llm",
+      "data": {
+        "type": "ai.llm",
+        "config": {
+          "model": "gpt-4",
+          "systemPrompt": "You are a pricing analyst. Compare the scraped prices with our prices and identify any significant changes.",
+          "userPrompt": "Competitor prices: {{scrape-1.data}}"
+        }
+      },
+      "position": { "x": 500, "y": 100 }
+    },
+    {
+      "id": "email-1",
+      "type": "communication.email",
+      "data": {
+        "type": "communication.email",
+        "config": {
+          "to": "team@example.com",
+          "subject": "Price Change Alert",
+          "body": "{{llm-1.output}}"
+        }
+      },
+      "position": { "x": 700, "y": 100 }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "scrape-1" },
+    { "id": "e2", "source": "scrape-1", "target": "llm-1" },
+    { "id": "e3", "source": "llm-1", "target": "email-1" }
+  ]
+}
+

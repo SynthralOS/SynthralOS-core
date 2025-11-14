@@ -26,6 +26,8 @@ try {
 
 // Import OCR service for scanned document support
 import { ocrService, OCRInput, OCRConfig } from '../ocrService';
+// Import ETL hook service for pre/post hooks
+import { etlHookService } from '../etlHookService';
 
 // Helper function to get organizationId from workflow
 async function getOrganizationIdFromWorkflow(workflowId: string): Promise<string | null> {
@@ -283,6 +285,7 @@ export async function executeDocumentIngest(context: NodeExecutionContext): Prom
   const chunkSize = (nodeConfig.chunkSize as number) || 1000;
   const chunkOverlap = (nodeConfig.chunkOverlap as number) || 200;
   const chunkStrategy = (nodeConfig.chunkStrategy as string) || 'fixed';
+  const preIngestHook = nodeConfig.preIngestHook as string | undefined; // Code agent ID
 
   const file = (input.file as string) || '';
   const text = (input.text as string) || '';
@@ -303,6 +306,25 @@ export async function executeDocumentIngest(context: NodeExecutionContext): Prom
     // If file is provided, parse it (keep existing parsing logic)
     if (file) {
       content = await parseFileContent(file, fileType);
+    }
+
+    // Execute pre-ingest hook if configured
+    if (preIngestHook) {
+      const hookResult = await etlHookService.executePreIngestHook(
+        preIngestHook,
+        {
+          document: content,
+          fileType,
+          metadata: input.metadata as Record<string, any> | undefined,
+        },
+        context.workflowId
+      );
+
+      if (hookResult.success && hookResult.document) {
+        content = hookResult.document;
+      } else {
+        console.warn('Pre-ingest hook failed, using original content:', hookResult.error);
+      }
     }
 
     // Use LangChain for chunking (more robust than custom implementation)
@@ -487,6 +509,33 @@ export async function executeRAG(context: NodeExecutionContext): Promise<NodeExe
       },
     });
 
+    let finalAnswer = llmResponse.content;
+
+    // Step 6: Execute post-answer hook if configured
+    const postAnswerHook = nodeConfig.postAnswerHook as string | undefined; // Code agent ID
+    if (postAnswerHook) {
+      const hookResult = await etlHookService.executePostAnswerHook(
+        postAnswerHook,
+        {
+          answer: finalAnswer,
+          context,
+          sources: searchResults.map((r) => ({
+            text: r.text,
+            score: r.score,
+            metadata: r.metadata,
+          })),
+          query,
+        },
+        workflowId
+      );
+
+      if (hookResult.success && hookResult.answer) {
+        finalAnswer = hookResult.answer;
+      } else {
+        console.warn('Post-answer hook failed, using original answer:', hookResult.error);
+      }
+    }
+
     const latencyMs = Date.now() - startTime;
 
     // Update span with success
@@ -534,7 +583,7 @@ export async function executeRAG(context: NodeExecutionContext): Promise<NodeExe
     return {
       success: true,
       output: {
-        answer: llmResponse.content,
+        answer: finalAnswer,
         sources: searchResults.map((r) => ({
           text: r.text,
           score: r.score,
