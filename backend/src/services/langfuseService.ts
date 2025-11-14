@@ -87,6 +87,14 @@ export class LangfuseService {
     const host = config?.host || process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com';
     this.enabled = config?.enabled !== false && !!(publicKey && secretKey);
 
+    // Configure batch size and interval from environment or defaults
+    this.batchSize = process.env.LANGFUSE_BATCH_SIZE 
+      ? parseInt(process.env.LANGFUSE_BATCH_SIZE, 10) 
+      : 10;
+    this.batchInterval = process.env.LANGFUSE_BATCH_INTERVAL_MS
+      ? parseInt(process.env.LANGFUSE_BATCH_INTERVAL_MS, 10)
+      : 5000;
+
     if (this.enabled) {
       try {
         this.client = new Langfuse({
@@ -102,6 +110,8 @@ export class LangfuseService {
 
         console.log('✅ Langfuse service initialized');
         console.log(`   Host: ${host}`);
+        console.log(`   Batch size: ${this.batchSize}`);
+        console.log(`   Batch interval: ${this.batchInterval}ms`);
       } catch (error: any) {
         console.error('❌ Failed to initialize Langfuse:', error);
         this.enabled = false;
@@ -133,15 +143,21 @@ export class LangfuseService {
     }
 
     const batch = this.batchQueue.splice(0, this.batchSize);
+    const startTime = Date.now();
     
     try {
-      // Process batch
-      for (const trace of batch) {
-        await this.exportTraceSync(trace);
-      }
+      // Process batch in parallel for better performance
+      await Promise.all(
+        batch.map(trace => this.exportTraceSync(trace))
+      );
 
       // Flush to Langfuse
       await this.client.flushAsync();
+      
+      const duration = Date.now() - startTime;
+      if (duration > 100) {
+        console.log(`[Langfuse] Processed batch of ${batch.length} traces in ${duration}ms`);
+      }
     } catch (error: any) {
       console.error('[Langfuse] Batch export failed:', error);
       // Re-queue failed traces (with limit to prevent memory issues)
@@ -162,9 +178,10 @@ export class LangfuseService {
     // Add to batch queue for async processing
     this.batchQueue.push(options);
 
-    // Flush if batch is full
+    // Flush if batch is full (trigger immediate flush for better responsiveness)
     if (this.batchQueue.length >= this.batchSize) {
-      await this.flushBatch();
+      // Use setImmediate to avoid blocking, but process immediately
+      setImmediate(() => this.flushBatch());
     }
   }
 
@@ -234,7 +251,7 @@ export class LangfuseService {
   }
 
   /**
-   * Process span queue asynchronously
+   * Process span queue asynchronously with batching
    */
   private async processSpanQueue(): Promise<void> {
     if (this.spanQueue.length === 0 || !this.client) {
@@ -242,10 +259,12 @@ export class LangfuseService {
     }
 
     const items = this.spanQueue.splice(0, this.batchSize);
+    const startTime = Date.now();
     
-    for (const item of items) {
+    // Process items in parallel for better performance
+    const promises = items.map(async (item) => {
       try {
-        const generation = this.client.generation({
+        const generation = this.client!.generation({
           traceId: item.options.traceId,
           id: item.options.spanId,
           name: item.options.name,
@@ -287,12 +306,18 @@ export class LangfuseService {
         console.error('[Langfuse] Span export failed:', error);
         item.reject(error);
       }
-    }
+    });
+
+    await Promise.all(promises);
 
     // Flush to Langfuse after processing batch
     if (this.client) {
       try {
         await this.client.flushAsync();
+        const duration = Date.now() - startTime;
+        if (duration > 100) {
+          console.log(`[Langfuse] Processed batch of ${items.length} spans in ${duration}ms`);
+        }
       } catch (error: any) {
         console.error('[Langfuse] Flush failed:', error);
       }
@@ -313,7 +338,7 @@ export class LangfuseService {
   }
 
   /**
-   * Process agent execution queue asynchronously
+   * Process agent execution queue asynchronously with batching
    */
   private async processAgentExecutionQueue(): Promise<void> {
     if (this.agentExecutionQueue.length === 0 || !this.client) {
@@ -321,8 +346,10 @@ export class LangfuseService {
     }
 
     const items = this.agentExecutionQueue.splice(0, this.batchSize);
+    const startTime = Date.now();
     
-    for (const item of items) {
+    // Process items in parallel for better performance
+    const promises = items.map(async (item) => {
       try {
         const url = await this.exportAgentExecutionSync(item.options);
         item.resolve(url);
@@ -330,12 +357,18 @@ export class LangfuseService {
         console.error('[Langfuse] Agent execution export failed:', error);
         item.reject(error);
       }
-    }
+    });
+
+    await Promise.all(promises);
 
     // Flush to Langfuse after processing batch
     if (this.client) {
       try {
         await this.client.flushAsync();
+        const duration = Date.now() - startTime;
+        if (duration > 100) {
+          console.log(`[Langfuse] Processed batch of ${items.length} agent executions in ${duration}ms`);
+        }
       } catch (error: any) {
         console.error('[Langfuse] Flush failed:', error);
       }
@@ -343,7 +376,7 @@ export class LangfuseService {
   }
 
   /**
-   * Process all queues asynchronously
+   * Process all queues asynchronously with optimized batching
    */
   private async processQueues(): Promise<void> {
     if (this.processingQueue) {
@@ -353,10 +386,12 @@ export class LangfuseService {
     this.processingQueue = true;
 
     try {
-      // Process all queues in parallel
+      // Process all queues in parallel for maximum throughput
       await Promise.all([
         this.processSpanQueue(),
         this.processAgentExecutionQueue(),
+        // Also process trace queue if it has items
+        this.batchQueue.length >= this.batchSize ? this.flushBatch() : Promise.resolve(),
       ]);
     } catch (error: any) {
       console.error('[Langfuse] Queue processing error:', error);
@@ -364,8 +399,18 @@ export class LangfuseService {
       this.processingQueue = false;
 
       // Continue processing if there are more items
-      if (this.spanQueue.length > 0 || this.agentExecutionQueue.length > 0) {
+      // Check if queues are full enough to warrant immediate processing
+      const hasEnoughItems = 
+        this.spanQueue.length >= this.batchSize ||
+        this.agentExecutionQueue.length >= this.batchSize ||
+        this.batchQueue.length >= this.batchSize;
+      
+      if (hasEnoughItems) {
+        // Process immediately if batch is full
         setImmediate(() => this.processQueues());
+      } else if (this.spanQueue.length > 0 || this.agentExecutionQueue.length > 0 || this.batchQueue.length > 0) {
+        // Otherwise, wait a bit before processing remaining items
+        setTimeout(() => this.processQueues(), 100);
       }
     }
   }
