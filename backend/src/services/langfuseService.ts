@@ -74,9 +74,12 @@ export class LangfuseService {
   private client: Langfuse | null = null;
   private enabled: boolean = false;
   private batchQueue: TraceExportOptions[] = [];
+  private spanQueue: Array<{ options: SpanExportOptions; resolve: (url: string | null) => void; reject: (err: any) => void }> = [];
+  private agentExecutionQueue: Array<{ options: any; resolve: (url: string | null) => void; reject: (err: any) => void }> = [];
   private batchSize: number = 10;
   private batchInterval: number = 5000; // 5 seconds
   private batchTimer: NodeJS.Timeout | null = null;
+  private processingQueue: boolean = false;
 
   constructor(config?: LangfuseConfig) {
     const publicKey = config?.publicKey || process.env.LANGFUSE_PUBLIC_KEY;
@@ -211,7 +214,7 @@ export class LangfuseService {
   }
 
   /**
-   * Export span to Langfuse
+   * Export span to Langfuse (async, non-blocking)
    * Returns Langfuse trace URL for linking
    */
   async exportSpan(options: SpanExportOptions): Promise<string | null> {
@@ -219,47 +222,80 @@ export class LangfuseService {
       return null;
     }
 
-    try {
-      const generation = this.client.generation({
-        traceId: options.traceId,
-        id: options.spanId,
-        name: options.name,
-        parentObservationId: options.parentSpanId,
-        startTime: options.startTime,
-        endTime: options.endTime,
-        metadata: {
-          ...options.attributes,
-          cost: options.cost,
-          tokens: options.tokens,
-          // Add OpenTelemetry trace/span IDs for linking
-          'otel.traceId': options.traceId,
-          'otel.spanId': options.spanId,
-        },
-        level: options.status?.code === SpanStatusCode.ERROR ? 'ERROR' : 'DEFAULT',
-        statusMessage: options.status?.message,
-      });
-
-      // Add events if available
-      if (options.events && options.events.length > 0) {
-        for (const event of options.events) {
-          generation.event({
-            name: event.name,
-            time: event.time,
-            metadata: event.attributes,
-          });
-        }
+    // Process asynchronously using setImmediate to avoid blocking
+    return new Promise<string | null>((resolve, reject) => {
+      this.spanQueue.push({ options, resolve, reject });
+      
+      // Trigger async processing if not already processing
+      if (!this.processingQueue) {
+        setImmediate(() => this.processQueues());
       }
+    });
+  }
 
-      // End generation
-      generation.end({
-        endTime: options.endTime,
-      });
+  /**
+   * Process span queue asynchronously
+   */
+  private async processSpanQueue(): Promise<void> {
+    if (this.spanQueue.length === 0 || !this.client) {
+      return;
+    }
 
-      // Return Langfuse trace URL
-      return this.getTraceUrl(options.traceId);
-    } catch (error: any) {
-      console.error('[Langfuse] Span export failed:', error);
-      throw error;
+    const items = this.spanQueue.splice(0, this.batchSize);
+    
+    for (const item of items) {
+      try {
+        const generation = this.client.generation({
+          traceId: item.options.traceId,
+          id: item.options.spanId,
+          name: item.options.name,
+          parentObservationId: item.options.parentSpanId,
+          startTime: item.options.startTime,
+          endTime: item.options.endTime,
+          metadata: {
+            ...item.options.attributes,
+            cost: item.options.cost,
+            tokens: item.options.tokens,
+            // Add OpenTelemetry trace/span IDs for linking
+            'otel.traceId': item.options.traceId,
+            'otel.spanId': item.options.spanId,
+          },
+          level: item.options.status?.code === SpanStatusCode.ERROR ? 'ERROR' : 'DEFAULT',
+          statusMessage: item.options.status?.message,
+        });
+
+        // Add events if available
+        if (item.options.events && item.options.events.length > 0) {
+          for (const event of item.options.events) {
+            generation.event({
+              name: event.name,
+              time: event.time,
+              metadata: event.attributes,
+            });
+          }
+        }
+
+        // End generation
+        generation.end({
+          endTime: item.options.endTime,
+        });
+
+        // Return Langfuse trace URL
+        const url = this.getTraceUrl(item.options.traceId);
+        item.resolve(url);
+      } catch (error: any) {
+        console.error('[Langfuse] Span export failed:', error);
+        item.reject(error);
+      }
+    }
+
+    // Flush to Langfuse after processing batch
+    if (this.client) {
+      try {
+        await this.client.flushAsync();
+      } catch (error: any) {
+        console.error('[Langfuse] Flush failed:', error);
+      }
     }
   }
 
@@ -277,7 +313,65 @@ export class LangfuseService {
   }
 
   /**
-   * Export agent execution trace
+   * Process agent execution queue asynchronously
+   */
+  private async processAgentExecutionQueue(): Promise<void> {
+    if (this.agentExecutionQueue.length === 0 || !this.client) {
+      return;
+    }
+
+    const items = this.agentExecutionQueue.splice(0, this.batchSize);
+    
+    for (const item of items) {
+      try {
+        const url = await this.exportAgentExecutionSync(item.options);
+        item.resolve(url);
+      } catch (error: any) {
+        console.error('[Langfuse] Agent execution export failed:', error);
+        item.reject(error);
+      }
+    }
+
+    // Flush to Langfuse after processing batch
+    if (this.client) {
+      try {
+        await this.client.flushAsync();
+      } catch (error: any) {
+        console.error('[Langfuse] Flush failed:', error);
+      }
+    }
+  }
+
+  /**
+   * Process all queues asynchronously
+   */
+  private async processQueues(): Promise<void> {
+    if (this.processingQueue) {
+      return; // Already processing
+    }
+
+    this.processingQueue = true;
+
+    try {
+      // Process all queues in parallel
+      await Promise.all([
+        this.processSpanQueue(),
+        this.processAgentExecutionQueue(),
+      ]);
+    } catch (error: any) {
+      console.error('[Langfuse] Queue processing error:', error);
+    } finally {
+      this.processingQueue = false;
+
+      // Continue processing if there are more items
+      if (this.spanQueue.length > 0 || this.agentExecutionQueue.length > 0) {
+        setImmediate(() => this.processQueues());
+      }
+    }
+  }
+
+  /**
+   * Export agent execution trace (async, non-blocking)
    * Returns Langfuse trace URL for linking
    */
   async exportAgentExecution(options: {
@@ -312,7 +406,62 @@ export class LangfuseService {
       timestamp?: Date;
     }>;
     intermediateSteps?: any[];
-  }): Promise<void> {
+  }): Promise<string | null> {
+    if (!this.enabled || !this.client) {
+      return null;
+    }
+
+    // Process asynchronously using setImmediate to avoid blocking
+    return new Promise<string | null>((resolve, reject) => {
+      this.agentExecutionQueue.push({ options, resolve, reject });
+      
+      // Trigger async processing if not already processing
+      if (!this.processingQueue) {
+        setImmediate(() => this.processQueues());
+      }
+    });
+  }
+
+  /**
+   * Export agent execution trace synchronously (internal)
+   */
+  private async exportAgentExecutionSync(options: {
+    traceId: string;
+    agentId: string;
+    framework: string;
+    query: string;
+    executionId: string;
+    userId?: string;
+    organizationId?: string;
+    workspaceId?: string;
+    startTime: Date;
+    endTime: Date;
+    success: boolean;
+    error?: string;
+    cost?: number;
+    tokens?: {
+      prompt?: number;
+      completion?: number;
+      total?: number;
+    };
+    metadata?: Record<string, any>;
+    thoughts?: Array<{
+      step: number;
+      thought?: string;
+      action?: string;
+      actionInput?: any;
+      observation?: string;
+      tool?: string;
+      toolInput?: any;
+      toolOutput?: any;
+      timestamp?: Date;
+    }>;
+    intermediateSteps?: any[];
+  }): Promise<string | null> {
+    if (!this.enabled || !this.client) {
+      return null;
+    }
+
     // Process thoughts/intermediate steps
     const thoughts = options.thoughts || [];
     const intermediateSteps = options.intermediateSteps || [];
