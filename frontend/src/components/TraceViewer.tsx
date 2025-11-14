@@ -164,15 +164,12 @@ export const TraceViewer: React.FC<TraceViewerProps> = ({
   const exportTraceAsJSON = async (trace: Trace) => {
     try {
       const response = await api.get(`/observability/traces/${trace.id}/export`, {
-        responseType: 'blob',
+        responseType: 'json',
       });
       
-      // Convert blob to text and parse JSON
-      const text = await response.data.text();
-      const jsonData = JSON.parse(text);
-      
       // Create blob with formatted JSON
-      const blob = new Blob([JSON.stringify(jsonData, null, 2)], {
+      const jsonString = JSON.stringify(response.data, null, 2);
+      const blob = new Blob([jsonString], {
         type: 'application/json',
       });
       const url = window.URL.createObjectURL(blob);
