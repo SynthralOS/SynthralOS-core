@@ -6,6 +6,7 @@ import { selfHealingService } from '../selfHealingService';
 import { contextCacheService } from '../contextCacheService';
 import { observabilityService } from '../observabilityService';
 import { posthogService } from '../posthogService';
+import { langfuseService } from '../langfuseService';
 import { createId } from '@paralleldrive/cuid2';
 import { db } from '../../config/database';
 import { agentTraceHistory } from '../../../drizzle/schema';

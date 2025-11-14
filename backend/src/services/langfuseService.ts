@@ -279,9 +279,67 @@ export class LangfuseService {
       total?: number;
     };
     metadata?: Record<string, any>;
+    thoughts?: Array<{
+      step: number;
+      thought?: string;
+      action?: string;
+      actionInput?: any;
+      observation?: string;
+      tool?: string;
+      toolInput?: any;
+      toolOutput?: any;
+      timestamp?: Date;
+    }>;
+    intermediateSteps?: any[];
   }): Promise<void> {
-    await this.exportTrace({
-      traceId: options.traceId,
+    // Process thoughts/intermediate steps
+    const thoughts = options.thoughts || [];
+    const intermediateSteps = options.intermediateSteps || [];
+    
+    // Convert intermediateSteps to thoughts format if needed
+    if (intermediateSteps.length > 0 && thoughts.length === 0) {
+      intermediateSteps.forEach((step: any, index: number) => {
+        // Handle different intermediate step formats
+        if (step.action && step.observation) {
+          // ReAct format: { action: { tool, toolInput }, observation }
+          thoughts.push({
+            step: index + 1,
+            action: step.action.tool || step.action.name,
+            actionInput: step.action.toolInput || step.action.input,
+            observation: step.observation,
+            tool: step.action.tool || step.action.name,
+            toolInput: step.action.toolInput || step.action.input,
+            toolOutput: step.observation,
+          });
+        } else if (step.thought || step.reasoning) {
+          // Thought/reasoning format
+          thoughts.push({
+            step: index + 1,
+            thought: step.thought || step.reasoning,
+            action: step.action,
+            actionInput: step.actionInput,
+            observation: step.observation,
+            timestamp: step.timestamp ? new Date(step.timestamp) : undefined,
+          });
+        } else if (typeof step === 'string') {
+          // Simple string format
+          thoughts.push({
+            step: index + 1,
+            thought: step,
+          });
+        } else {
+          // Generic object format
+          thoughts.push({
+            step: index + 1,
+            ...step,
+          });
+        }
+      });
+    }
+
+    // Export main trace
+    const trace = this.client!.trace({
+      id: options.traceId,
       name: `Agent Execution: ${options.framework}`,
       userId: options.userId,
       sessionId: options.executionId,
@@ -292,6 +350,7 @@ export class LangfuseService {
         workspaceId: options.workspaceId,
         success: options.success,
         error: options.error,
+        totalThoughts: thoughts.length,
         ...options.metadata,
       },
       tags: ['agent-execution', options.framework],
@@ -306,8 +365,51 @@ export class LangfuseService {
       statusMessage: options.error || (options.success ? 'Success' : 'Failed'),
       startTime: options.startTime,
       endTime: options.endTime,
-      cost: options.cost,
-      tokens: options.tokens,
+    });
+
+    // Add cost and tokens if available
+    if (options.cost !== undefined || options.tokens) {
+      trace.update({
+        metadata: {
+          ...trace.metadata,
+          cost: options.cost,
+          tokens: options.tokens,
+        },
+      });
+    }
+
+    // Export each thought as a span/observation
+    if (thoughts.length > 0 && this.client) {
+      for (const thought of thoughts) {
+        const thoughtStartTime = thought.timestamp || options.startTime;
+        const thoughtEndTime = thought.timestamp || options.endTime;
+
+        // Create a generation (observation) for each thought
+        const observation = this.client.observation({
+          type: 'GENERATION',
+          traceId: options.traceId,
+          name: `Thought ${thought.step}${thought.action ? `: ${thought.action}` : ''}`,
+          startTime: thoughtStartTime instanceof Date ? thoughtStartTime : new Date(thoughtStartTime),
+          endTime: thoughtEndTime instanceof Date ? thoughtEndTime : new Date(thoughtEndTime),
+          metadata: {
+            step: thought.step,
+            thought: thought.thought,
+            action: thought.action,
+            tool: thought.tool,
+          },
+          input: thought.actionInput || thought.toolInput,
+          output: thought.observation || thought.toolOutput,
+        });
+
+        observation.end({
+          endTime: thoughtEndTime instanceof Date ? thoughtEndTime : new Date(thoughtEndTime),
+        });
+      }
+    }
+
+    // End trace
+    trace.end({
+      endTime: options.endTime,
     });
   }
 
