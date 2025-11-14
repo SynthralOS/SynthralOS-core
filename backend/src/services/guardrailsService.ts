@@ -4,6 +4,7 @@ import { featureFlagService } from './featureFlagService';
 import { langchainService } from './langchainService';
 import { similarityService, SimilarityMethod } from './similarityService';
 import { guardrailsAIService, GuardrailsAIOptions, GuardrailsAIValidationResult } from './guardrailsAIService';
+import { rateLimitService } from './rateLimitService';
 import { db } from '../config/database';
 import { promptSimilarityLogs } from '../../drizzle/schema';
 import { createId } from '@paralleldrive/cuid2';
@@ -1250,11 +1251,35 @@ export class GuardrailsService {
         }
       }
 
-      // Step 4: Behavioral patterns (if user context available)
+      // Step 4: Behavioral patterns - rate limiting check
       if (userId) {
-        // Check for rapid repeated similar requests
-        // This would require rate limiting/request history context
-        // Placeholder for future implementation
+        try {
+          const rateLimitResult = await rateLimitService.checkRateLimit('abuse', {
+            userId,
+            endpoint: 'abuse_check',
+          });
+
+          if (!rateLimitResult.allowed) {
+            patterns.push({
+              type: 'rate_limit_exceeded',
+              score: 0.9,
+              description: `Rate limit exceeded: ${rateLimitResult.retryAfter}s until reset`,
+            });
+            mlScore += 0.3; // High score for rate limit violations
+            
+            return {
+              isAbuse: true,
+              abuseType: 'rate_limit_exceeded',
+              confidence: 0.9,
+              action: 'block',
+              mlScore: 0.9,
+              patterns,
+              features,
+            };
+          }
+        } catch (error: any) {
+          console.warn('[Guardrails] Rate limit check failed:', error);
+        }
       }
 
       // Normalize ML score to 0-1 range

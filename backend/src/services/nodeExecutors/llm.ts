@@ -9,6 +9,7 @@ import { costCalculationService } from '../costCalculationService';
 import { guardrailsService } from '../guardrailsService';
 import { langfuseService } from '../langfuseService';
 import { archGWService } from '../archGWService';
+import { rateLimitService } from '../rateLimitService';
 import { eq } from 'drizzle-orm';
 
 export async function executeLLM(context: NodeExecutionContext): Promise<NodeExecutionResult> {
@@ -183,6 +184,55 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
     } catch (error: any) {
       console.warn('[LLM Executor] ArchGW routing failed:', error);
       // Continue with default routing if ArchGW fails
+    }
+
+    // Guardrails: Check rate limit (if enabled)
+    try {
+      const enableRateLimit = await featureFlagService.isEnabled(
+        'enable_rate_limiting',
+        context.userId,
+        (context as any).workspaceId
+      );
+
+      if (enableRateLimit) {
+        const rateLimitResult = await rateLimitService.checkRateLimit('llm', {
+          userId: context.userId || undefined,
+          organizationId: (context as any).organizationId || undefined,
+          workspaceId: (context as any).workspaceId || undefined,
+          endpoint: 'llm_execution',
+        });
+
+        span.setAttributes({
+          'rate_limit.allowed': rateLimitResult.allowed,
+          'rate_limit.remaining': rateLimitResult.remaining,
+          'rate_limit.limit': rateLimitResult.limit,
+          'rate_limit.reset_at': rateLimitResult.resetAt.toISOString(),
+        });
+
+        if (!rateLimitResult.allowed) {
+          span.setStatus({ 
+            code: SpanStatusCode.ERROR, 
+            message: 'Rate limit exceeded' 
+          });
+          span.end();
+
+          return {
+            success: false,
+            error: {
+              message: `Rate limit exceeded. Please try again after ${rateLimitResult.retryAfter || 60} seconds.`,
+              code: 'RATE_LIMIT_EXCEEDED',
+              details: {
+                limit: rateLimitResult.limit,
+                resetAt: rateLimitResult.resetAt.toISOString(),
+                retryAfter: rateLimitResult.retryAfter,
+              },
+            },
+          };
+        }
+      }
+    } catch (error: any) {
+      console.warn('[LLM Executor] Rate limit check failed:', error);
+      // Continue execution if rate limit check fails
     }
 
     // Guardrails: Check prompt length (skip if ArchGW already handled it)

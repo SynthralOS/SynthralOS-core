@@ -2,6 +2,8 @@ import { NodeExecutionContext, NodeExecutionResult } from '@sos/shared';
 import { agentService, AgentConfig, AgentResponse } from '../agentService';
 import { agentRouter, RoutingHeuristics } from '../agentRouter';
 import { guardrailsService } from '../guardrailsService';
+import { rateLimitService } from '../rateLimitService';
+import { featureFlagService } from '../featureFlagService';
 import { selfHealingService } from '../selfHealingService';
 import { contextCacheService } from '../contextCacheService';
 import { observabilityService } from '../observabilityService';
@@ -103,10 +105,47 @@ export async function executeAgent(
     }
   }
 
+  // Guardrails: Check rate limit (if enabled)
+  try {
+    const enableRateLimit = await featureFlagService.isEnabled(
+      'enable_rate_limiting',
+      context.userId,
+      (context as any).workspaceId
+    );
+
+    if (enableRateLimit) {
+      const rateLimitResult = await rateLimitService.checkRateLimit('agent', {
+        userId: context.userId || undefined,
+        organizationId: (context as any).organizationId || undefined,
+        workspaceId: (context as any).workspaceId || undefined,
+        endpoint: 'agent_execution',
+      });
+
+      if (!rateLimitResult.allowed) {
+        return {
+          success: false,
+          error: {
+            message: `Rate limit exceeded. Please try again after ${rateLimitResult.retryAfter || 60} seconds.`,
+            code: 'RATE_LIMIT_EXCEEDED',
+            details: {
+              limit: rateLimitResult.limit,
+              resetAt: rateLimitResult.resetAt.toISOString(),
+              retryAfter: rateLimitResult.retryAfter,
+            },
+          },
+        };
+      }
+    }
+  } catch (error: any) {
+    console.warn('[Agent Executor] Rate limit check failed:', error);
+    // Continue execution if rate limit check fails
+  }
+
   // Guardrails: Check for abuse
   const abuseCheck = await guardrailsService.checkAbuse(query, {
     useMLDetection: true,
     checkSemanticSimilarity: true,
+    userId: context.userId,
   });
   if (abuseCheck.isAbuse && abuseCheck.action === 'block') {
     // Track prompt blocking in PostHog
