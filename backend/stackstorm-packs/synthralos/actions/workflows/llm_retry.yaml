@@ -1,0 +1,94 @@
+version: 1.0
+
+description: >
+  Retry workflow for failed LLM calls.
+  Implements exponential backoff and model fallback strategies.
+
+input:
+  - original_request
+  - failure_reason
+  - max_retries
+  - fallback_models
+
+output:
+  success: <% ctx().success %>
+  result: <% ctx().result %>
+  attempts: <% ctx().attempts %>
+  final_model: <% ctx().current_model %>
+
+vars:
+  - success: false
+  - result: null
+  - attempts: 0
+  - current_model: <% ctx().original_request.model %>
+  - current_delay: 1
+  - model_index: 0
+
+tasks:
+  determine_retry_strategy:
+    action: synthralos.determine_retry_strategy
+    input:
+      failure_reason: <% ctx().failure_reason %>
+      original_request: <% ctx().original_request %>
+      fallback_models: <% ctx().fallback_models %>
+    next:
+      - when: <% succeeded() %>
+        do: retry_llm_call
+
+  retry_llm_call:
+    action: synthralos.call_llm
+    input:
+      prompt: <% ctx().original_request.prompt %>
+      model: <% ctx().current_model %>
+      parameters: <% ctx().original_request.parameters %>
+    next:
+      - when: <% succeeded() %>
+        publish:
+          - success: true
+          - result: <% ctx().retry_llm_call.output %>
+          - attempts: <% ctx().attempts + 1 %>
+        do: retry_complete
+      - when: <% failed() %>
+        do: check_retry_limit
+
+  check_retry_limit:
+    action: core.noop
+    next:
+      - when: <% ctx().attempts < ctx().max_retries %>
+        do: try_fallback_model
+      - when: <% ctx().attempts >= ctx().max_retries %>
+        do: retry_failed
+
+  try_fallback_model:
+    action: core.noop
+    next:
+      - when: <% ctx().model_index < len(ctx().fallback_models) %>
+        publish:
+          - current_model: <% ctx().fallback_models[ctx().model_index] %>
+          - model_index: <% ctx().model_index + 1 %>
+          - attempts: <% ctx().attempts + 1 %>
+          - current_delay: <% ctx().current_delay * 2 %>
+        do: wait_before_retry
+      - when: <% ctx().model_index >= len(ctx().fallback_models) %>
+        do: retry_failed
+
+  wait_before_retry:
+    action: core.local
+    input:
+      cmd: sleep <% ctx().current_delay %>
+    next:
+      - when: <% succeeded() %>
+        do: retry_llm_call
+
+  retry_failed:
+    action: synthralos.log_retry_failure
+    input:
+      original_request: <% ctx().original_request %>
+      failure_reason: <% ctx().failure_reason %>
+      attempts: <% ctx().attempts %>
+    next:
+      - do: retry_complete
+
+  retry_complete:
+    action: core.noop
+

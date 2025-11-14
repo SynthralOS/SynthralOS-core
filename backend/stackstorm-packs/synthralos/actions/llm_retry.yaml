@@ -1,0 +1,27 @@
+---
+name: llm_retry
+pack: synthralos
+runner_type: "orquesta"
+description: "Retry workflow for failed LLM calls with exponential backoff and model fallback"
+enabled: true
+entry_point: workflows/llm_retry.yaml
+parameters:
+  original_request:
+    type: object
+    description: "Original LLM request parameters"
+    required: true
+  failure_reason:
+    type: string
+    description: "Reason for failure"
+    required: true
+  max_retries:
+    type: integer
+    description: "Maximum number of retry attempts"
+    required: false
+    default: 3
+  fallback_models:
+    type: array
+    description: "List of fallback models to try"
+    required: false
+    default: []
+

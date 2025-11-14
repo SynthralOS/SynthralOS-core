@@ -1,0 +1,87 @@
+version: 1.0
+
+description: >
+  Reroute workflow for failed requests.
+  Implements region and provider fallback strategies.
+
+input:
+  - original_request
+  - failure_reason
+  - fallback_regions
+  - fallback_providers
+
+output:
+  success: <% ctx().success %>
+  result: <% ctx().result %>
+  final_region: <% ctx().current_region %>
+  final_provider: <% ctx().current_provider %>
+
+vars:
+  - success: false
+  - result: null
+  - current_region: <% ctx().original_request.region if ctx().original_request.region else "us-east-1" %>
+  - current_provider: <% ctx().original_request.provider if ctx().original_request.provider else "openai" %>
+  - region_index: 0
+  - provider_index: 0
+
+tasks:
+  analyze_failure:
+    action: synthralos.analyze_routing_failure
+    input:
+      failure_reason: <% ctx().failure_reason %>
+      original_request: <% ctx().original_request %>
+    next:
+      - when: <% succeeded() %>
+        do: try_reroute
+
+  try_reroute:
+    action: synthralos.execute_request
+    input:
+      request: <% ctx().original_request %>
+      region: <% ctx().current_region %>
+      provider: <% ctx().current_provider %>
+    next:
+      - when: <% succeeded() %>
+        publish:
+          - success: true
+          - result: <% ctx().try_reroute.output %>
+        do: reroute_complete
+      - when: <% failed() %>
+        do: try_next_region
+
+  try_next_region:
+    action: core.noop
+    next:
+      - when: <% ctx().region_index < len(ctx().fallback_regions) %>
+        publish:
+          - current_region: <% ctx().fallback_regions[ctx().region_index] %>
+          - region_index: <% ctx().region_index + 1 %>
+        do: try_reroute
+      - when: <% ctx().region_index >= len(ctx().fallback_regions) %>
+        do: try_next_provider
+
+  try_next_provider:
+    action: core.noop
+    next:
+      - when: <% ctx().provider_index < len(ctx().fallback_providers) %>
+        publish:
+          - current_provider: <% ctx().fallback_providers[ctx().provider_index] %>
+          - provider_index: <% ctx().provider_index + 1 %>
+          - region_index: 0
+        do: try_reroute
+      - when: <% ctx().provider_index >= len(ctx().fallback_providers) %>
+        do: reroute_failed
+
+  reroute_failed:
+    action: synthralos.log_reroute_failure
+    input:
+      original_request: <% ctx().original_request %>
+      failure_reason: <% ctx().failure_reason %>
+      attempted_regions: <% ctx().fallback_regions %>
+      attempted_providers: <% ctx().fallback_providers %>
+    next:
+      - do: reroute_complete
+
+  reroute_complete:
+    action: core.noop
+

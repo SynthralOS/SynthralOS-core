@@ -1,0 +1,27 @@
+---
+name: reroute_request
+pack: synthralos
+runner_type: "orquesta"
+description: "Reroute workflow for failed requests with region/provider fallback"
+enabled: true
+entry_point: workflows/reroute_request.yaml
+parameters:
+  original_request:
+    type: object
+    description: "Original request parameters"
+    required: true
+  failure_reason:
+    type: string
+    description: "Reason for failure"
+    required: true
+  fallback_regions:
+    type: array
+    description: "List of fallback regions"
+    required: false
+    default: []
+  fallback_providers:
+    type: array
+    description: "List of fallback providers"
+    required: false
+    default: []
+

@@ -1,0 +1,14 @@
+---
+ref: synthralos
+name: SynthralOS
+description: StackStorm pack for SynthralOS automation platform
+keywords:
+  - synthralos
+  - automation
+  - agents
+  - llm
+  - recovery
+version: 1.0.0
+author: SynthralOS Team
+email: support@synthralos.ai
+

@@ -1,0 +1,105 @@
+version: 1.0
+
+description: >
+  Recovery workflow for failed agent executions.
+  This workflow attempts to recover from various types of agent failures
+  by analyzing the failure, generating a repair plan, and executing recovery steps.
+
+input:
+  - agent_id
+  - failure_type
+  - original_query
+  - failure_details
+  - context
+  - max_retries
+  - retry_delay
+
+output:
+  recovery_success: <% ctx().recovery_success %>
+  recovery_result: <% ctx().recovery_result %>
+  retry_count: <% ctx().retry_count %>
+
+vars:
+  - recovery_success: false
+  - recovery_result: null
+  - retry_count: 0
+  - current_delay: <% ctx().retry_delay %>
+
+tasks:
+  analyze_failure:
+    action: synthralos.analyze_agent_failure
+    input:
+      agent_id: <% ctx().agent_id %>
+      failure_type: <% ctx().failure_type %>
+      failure_details: <% ctx().failure_details %>
+      original_query: <% ctx().original_query %>
+    next:
+      - when: <% succeeded() %>
+        do: generate_repair_plan
+      - when: <% failed() %>
+        do: log_failure
+
+  generate_repair_plan:
+    action: synthralos.generate_repair_plan
+    input:
+      agent_id: <% ctx().agent_id %>
+      failure_analysis: <% ctx().analyze_failure.output %>
+      original_query: <% ctx().original_query %>
+      context: <% ctx().context %>
+    next:
+      - when: <% succeeded() %>
+        do: execute_recovery
+      - when: <% failed() %>
+        do: log_failure
+
+  execute_recovery:
+    action: synthralos.execute_recovery
+    input:
+      agent_id: <% ctx().agent_id %>
+      repair_plan: <% ctx().generate_repair_plan.output %>
+      original_query: <% ctx().original_query %>
+      context: <% ctx().context %>
+    next:
+      - when: <% succeeded() and ctx().execute_recovery.output.success %>
+        publish:
+          - recovery_success: true
+          - recovery_result: <% ctx().execute_recovery.output %>
+        do: recovery_complete
+      - when: <% succeeded() and not ctx().execute_recovery.output.success %>
+        do: retry_or_fail
+      - when: <% failed() %>
+        do: retry_or_fail
+
+  retry_or_fail:
+    action: core.noop
+    next:
+      - when: <% ctx().retry_count < ctx().max_retries %>
+        do: wait_and_retry
+      - when: <% ctx().retry_count >= ctx().max_retries %>
+        do: log_failure
+
+  wait_and_retry:
+    action: core.local
+    input:
+      cmd: sleep <% ctx().current_delay %>
+    next:
+      - when: <% succeeded() %>
+        publish:
+          - retry_count: <% ctx().retry_count + 1 %>
+          - current_delay: <% ctx().current_delay * 2 %>
+        do: execute_recovery
+
+  log_failure:
+    action: synthralos.log_recovery_failure
+    input:
+      agent_id: <% ctx().agent_id %>
+      failure_type: <% ctx().failure_type %>
+      failure_details: <% ctx().failure_details %>
+      repair_plan: <% ctx().generate_repair_plan.output if ctx().generate_repair_plan else null %>
+      retry_count: <% ctx().retry_count %>
+    next:
+      - do: recovery_complete
+
+  recovery_complete:
+    action: core.noop
+

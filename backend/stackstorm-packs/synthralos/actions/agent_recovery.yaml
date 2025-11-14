@@ -1,0 +1,41 @@
+---
+name: agent_recovery
+pack: synthralos
+runner_type: "orquesta"
+description: "Recovery workflow for failed agent executions"
+enabled: true
+entry_point: workflows/agent_recovery.yaml
+parameters:
+  agent_id:
+    type: string
+    description: "ID of the failed agent"
+    required: true
+  failure_type:
+    type: string
+    description: "Type of failure (timeout, error, invalid_output, tool_failure, llm_error)"
+    required: true
+  original_query:
+    type: string
+    description: "Original query that failed"
+    required: true
+  failure_details:
+    type: object
+    description: "Detailed failure information"
+    required: false
+    default: {}
+  context:
+    type: object
+    description: "Additional context for recovery"
+    required: false
+    default: {}
+  max_retries:
+    type: integer
+    description: "Maximum number of retry attempts"
+    required: false
+    default: 3
+  retry_delay:
+    type: integer
+    description: "Initial retry delay in seconds"
+    required: false
+    default: 5
+
