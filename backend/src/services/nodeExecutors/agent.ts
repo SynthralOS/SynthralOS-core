@@ -483,7 +483,7 @@ export async function executeAgent(
       const failure = selfHealingService.detectFailure(agentId, result, null);
       
       if (failure) {
-        selfHealingService.recordFailure(agentId, failure);
+        await selfHealingService.recordFailure(agentId, failure, context);
         const repairPlan = await selfHealingService.generateRepairPlan(
           agentId,
           failure,
@@ -763,7 +763,7 @@ export async function executeAgent(
     const failure = selfHealingService.detectFailure(agentId, null, error);
     
     if (failure) {
-      selfHealingService.recordFailure(agentId, failure);
+      await selfHealingService.recordFailure(agentId, failure, context);
       
       // Generate and queue repair plan
       try {

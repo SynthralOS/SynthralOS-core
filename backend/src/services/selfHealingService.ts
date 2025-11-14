@@ -3,8 +3,10 @@ import { AgentResponse } from './agentService';
 import { langchainService } from './langchainService';
 import { redis } from '../config/redis';
 import { stackstormBullMQIntegration } from './stackstormBullMQIntegration';
+import { stackstormWorkflowService } from './stackstormWorkflowService';
 import { stackstormConfig } from '../config/stackstorm';
 import { featureFlagService } from './featureFlagService';
+import { observabilityService } from './observabilityService';
 
 /**
  * Self-Healing Service
@@ -505,6 +507,38 @@ Format your response as JSON:
       throw new Error(`Repair plan ${planId} not found`);
     }
 
+    // Check if StackStorm execution is enabled
+    let useStackStorm = false;
+    try {
+      useStackStorm = await featureFlagService.isEnabled(
+        'enable_stackstorm_repair_execution',
+        (context as any)?.userId,
+        (context as any)?.workspaceId
+      );
+    } catch (error: any) {
+      console.warn('[Self-Healing] Failed to check StackStorm execution feature flag:', error);
+    }
+
+    // Try StackStorm workflow execution if enabled
+    if (useStackStorm && stackstormConfig.enabled) {
+      try {
+        const isAvailable = await stackstormWorkflowService.isAvailable();
+        if (isAvailable) {
+          return await this.executeRepairPlanWithStackStorm(
+            planId,
+            plan,
+            originalQuery,
+            agentConfig,
+            context,
+            startTime
+          );
+        }
+      } catch (error: any) {
+        console.warn('[Self-Healing] StackStorm execution failed, falling back to standard execution:', error);
+      }
+    }
+
+    // Standard repair plan execution
     const executedSteps: string[] = [];
 
     try {
@@ -554,6 +588,80 @@ Format your response as JSON:
   }
 
   /**
+   * Execute repair plan using StackStorm workflow
+   */
+  private async executeRepairPlanWithStackStorm(
+    planId: string,
+    plan: RepairPlan,
+    originalQuery: string,
+    agentConfig: Record<string, unknown>,
+    context?: Record<string, unknown>,
+    startTime: number = Date.now()
+  ): Promise<RepairResult> {
+    try {
+      const agentId = (context as any)?.agentId || 'unknown';
+      
+      // Execute StackStorm agent recovery workflow
+      const recoveryResult = await stackstormWorkflowService.executeAgentRecovery({
+        agent_id: agentId,
+        failure_type: plan.failureType.type,
+        original_query: originalQuery,
+        failure_details: plan.failureType.details || {},
+        context: {
+          ...context,
+          planId,
+          repairPlan: {
+            steps: plan.steps,
+            estimatedTime: plan.estimatedTime,
+            confidence: plan.confidence,
+          },
+          agentConfig,
+        },
+        max_retries: 3,
+        retry_delay: 5,
+      });
+
+      // Record repair attempt in observability
+      if (context && (context as any).userId) {
+        observabilityService.recordEvent({
+          type: 'agent_repair',
+          userId: (context as any).userId,
+          organizationId: (context as any).organizationId,
+          workspaceId: (context as any).workspaceId,
+          metadata: {
+            agentId,
+            planId,
+            failureType: plan.failureType.type,
+            stackstormExecutionId: recoveryResult.executionId,
+            success: recoveryResult.success,
+          },
+        });
+      }
+
+      if (recoveryResult.success && recoveryResult.result) {
+        return {
+          success: true,
+          planId,
+          executedSteps: ['stackstorm_agent_recovery'],
+          finalOutput: recoveryResult.result.finalOutput || recoveryResult.result.recovery_result,
+          executionTime: Date.now() - startTime,
+        };
+      } else {
+        return {
+          success: false,
+          planId,
+          executedSteps: ['stackstorm_agent_recovery'],
+          error: recoveryResult.result?.error || 'StackStorm recovery workflow failed',
+          executionTime: Date.now() - startTime,
+        };
+      }
+    } catch (error: any) {
+      console.error('[Self-Healing] StackStorm repair execution failed:', error);
+      throw error; // Re-throw to fall back to standard execution
+    }
+  }
+
+  /**
    * Execute a single repair action
    */
   private async executeRepairAction(
@@ -562,9 +670,32 @@ Format your response as JSON:
     agentConfig: Record<string, unknown>,
     context?: Record<string, unknown>
   ): Promise<{ success: boolean; output?: string }> {
-    // Simplified repair action execution
-    // In production, this would have specific handlers for each action type
+    // Check if StackStorm should be used for specific actions
+    let useStackStorm = false;
+    try {
+      useStackStorm = await featureFlagService.isEnabled(
+        'enable_stackstorm_repair_actions',
+        (context as any)?.userId,
+        (context as any)?.workspaceId
+      );
+    } catch (error: any) {
+      // Continue with standard execution
+    }
 
+    // Use StackStorm for LLM-related actions if enabled
+    if (useStackStorm && stackstormConfig.enabled && 
+        (step.action === 'retry_with_backoff' || step.action === 'switch_provider')) {
+      try {
+        const isAvailable = await stackstormWorkflowService.isAvailable();
+        if (isAvailable) {
+          return await this.executeRepairActionWithStackStorm(step, originalQuery, agentConfig, context);
+        }
+      } catch (error: any) {
+        console.warn(`[Self-Healing] StackStorm action ${step.action} failed, using standard execution:`, error);
+      }
+    }
+
+    // Standard repair action execution
     switch (step.action) {
       case 'retry_execution':
       case 'retry_tool':
@@ -590,9 +721,75 @@ Format your response as JSON:
         // Would trigger regeneration
         return { success: false, output: 'Regeneration should be handled by executor' };
 
+      case 'switch_provider':
+        // Switch provider (would be handled by executor)
+        return { success: false, output: 'Provider switch should be handled by executor' };
+
       default:
         return { success: false, output: 'Unknown repair action' };
     }
+  }
+
+  /**
+   * Execute repair action using StackStorm
+   */
+  private async executeRepairActionWithStackStorm(
+    step: RepairPlan['steps'][0],
+    originalQuery: string,
+    agentConfig: Record<string, unknown>,
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; output?: string }> {
+    try {
+      switch (step.action) {
+        case 'retry_with_backoff':
+          // Use StackStorm LLM retry workflow
+          const retryResult = await stackstormWorkflowService.executeLLMRetry({
+            original_request: {
+              prompt: originalQuery,
+              model: (agentConfig.model as string) || 'gpt-3.5-turbo',
+              parameters: {
+                temperature: agentConfig.temperature || 0.7,
+                maxTokens: agentConfig.maxTokens || 1000,
+              },
+            },
+            failure_reason: 'LLM call failed',
+            max_retries: 3,
+            fallback_models: ['gpt-3.5-turbo', 'gpt-4'],
+          });
+
+          if (retryResult.success && retryResult.result) {
+            return {
+              success: true,
+              output: retryResult.result.result?.response || retryResult.result.result?.text,
+            };
+          }
+          break;
+
+        case 'switch_provider':
+          // Use StackStorm reroute workflow
+          const rerouteResult = await stackstormWorkflowService.executeReroute({
+            original_request: {
+              prompt: originalQuery,
+              provider: (agentConfig.provider as string) || 'openai',
+              model: (agentConfig.model as string) || 'gpt-3.5-turbo',
+            },
+            failure_reason: 'Provider unavailable',
+            fallback_providers: ['anthropic', 'google'],
+          });
+
+          if (rerouteResult.success && rerouteResult.result) {
+            return {
+              success: true,
+              output: rerouteResult.result.result?.response || rerouteResult.result.result?.text,
+            };
+          }
+          break;
+      }
+    } catch (error: any) {
+      console.error(`[Self-Healing] StackStorm action ${step.action} execution failed:`, error);
+    }
+
+    return { success: false, output: 'StackStorm action execution failed' };
   }
 
   /**
