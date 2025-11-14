@@ -56,6 +56,7 @@ interface TraceViewerProps {
   onTraceSelect?: (traceId: string) => void;
   workspaceId?: string;
   userId?: string;
+  timeRange?: '1h' | '24h' | '7d' | '30d';
 }
 
 export const TraceViewer: React.FC<TraceViewerProps> = ({
@@ -63,12 +64,13 @@ export const TraceViewer: React.FC<TraceViewerProps> = ({
   onTraceSelect,
   workspaceId,
   userId,
+  timeRange: propTimeRange,
 }) => {
   const [traces, setTraces] = useState<Trace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d' | '30d'>('24h');
+  const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d' | '30d'>(propTimeRange || '24h');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Load traces
