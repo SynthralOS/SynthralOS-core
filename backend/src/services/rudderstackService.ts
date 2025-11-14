@@ -124,35 +124,56 @@ class RudderStackService {
 
   /**
    * Process a batch of events
+   * Uses Promise.allSettled for parallel processing to improve performance
    */
   private async processBatch(batch: QueuedEvent[], remainingEvents: QueuedEvent[]): Promise<void> {
-    for (const queuedEvent of batch) {
-      try {
-        queuedEvent.lastAttempt = Date.now();
-        queuedEvent.retries++;
+    // Process events in parallel for better performance
+    // Use Promise.allSettled to handle individual failures without blocking
+    const results = await Promise.allSettled(
+      batch.map(async (queuedEvent) => {
+        try {
+          queuedEvent.lastAttempt = Date.now();
+          queuedEvent.retries++;
 
-        // Track the event
-        if (queuedEvent.event.userId) {
-          this.client.track(queuedEvent.event);
-        } else {
-          this.client.identify({
-            anonymousId: queuedEvent.event.anonymousId || 'anonymous',
-            traits: queuedEvent.event.properties || {},
-            context: queuedEvent.event.context,
-            timestamp: queuedEvent.event.timestamp || new Date(),
-          });
-        }
+          // Track the event (RudderStack SDK handles batching internally)
+          if (queuedEvent.event.userId) {
+            this.client.track(queuedEvent.event);
+          } else {
+            this.client.identify({
+              anonymousId: queuedEvent.event.anonymousId || 'anonymous',
+              traits: queuedEvent.event.properties || {},
+              context: queuedEvent.event.context,
+              timestamp: queuedEvent.event.timestamp || new Date(),
+            });
+          }
 
-        // Event successfully sent, don't add to remaining
-      } catch (error: any) {
-        console.warn(`[RudderStack] Failed to send event (attempt ${queuedEvent.retries}/${this.maxRetries}):`, error);
-        
-        // If max retries not reached, add back to queue
-        if (queuedEvent.retries < this.maxRetries) {
-          remainingEvents.push(queuedEvent);
-        } else {
-          console.error('[RudderStack] Event dropped after max retries:', queuedEvent.event);
+          // Event successfully queued
+          return { success: true, queuedEvent };
+        } catch (error: any) {
+          // Return failure for handling below
+          return { success: false, queuedEvent, error };
         }
+      })
+    );
+
+    // Process results and handle failures
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { success, queuedEvent, error } = result.value;
+        if (!success && queuedEvent) {
+          // Handle failed event
+          console.warn(`[RudderStack] Failed to send event (attempt ${queuedEvent.retries}/${this.maxRetries}):`, error);
+          
+          // If max retries not reached, add back to queue
+          if (queuedEvent.retries < this.maxRetries) {
+            remainingEvents.push(queuedEvent);
+          } else {
+            console.error('[RudderStack] Event dropped after max retries:', queuedEvent.event);
+          }
+        }
+      } else {
+        // Promise rejected (shouldn't happen with our try-catch, but handle it)
+        console.error('[RudderStack] Unexpected error processing batch:', result.reason);
       }
     }
   }
