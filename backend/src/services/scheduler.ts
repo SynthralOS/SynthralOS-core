@@ -4,6 +4,8 @@ import { workflows, organizations } from '../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 import { workflowExecutor } from './workflowExecutor';
 import { observabilityService } from './observabilityService';
+import { cronBackoffService } from './cronBackoffService';
+import { featureFlagService } from './featureFlagService';
 
 class Scheduler {
   private jobs: Map<string, cron.ScheduledTask> = new Map();
@@ -84,12 +86,32 @@ class Scheduler {
             continue;
           }
 
-          // Schedule new job
+          // Schedule new job with backoff support
           const task = cron.schedule(
             cronExpression,
             async () => {
+              const jobKey = `${workflow.id}-${node.id}`;
+              
+              // Check if job should execute (not in backoff period)
+              const backoffCheck = await cronBackoffService.shouldExecute(jobKey);
+              
+              if (!backoffCheck.shouldExecute) {
+                console.log(
+                  `[Scheduler] Skipping scheduled workflow ${workflow.id} (${backoffCheck.reason})` +
+                  (backoffCheck.nextRetryAt ? `. Next retry: ${backoffCheck.nextRetryAt.toISOString()}` : '')
+                );
+                return;
+              }
+
               try {
-                await workflowExecutor.executeWorkflow({
+                // Check if backoff is enabled via feature flag
+                const enableBackoff = await featureFlagService.isEnabled(
+                  'enable_cron_backoff',
+                  undefined,
+                  workflow.workspaceId
+                );
+
+                const executionResult = await workflowExecutor.executeWorkflow({
                   workflowId: workflow.id,
                   definition,
                   input: {
@@ -99,8 +121,41 @@ class Scheduler {
                     },
                   },
                 });
-              } catch (error) {
+
+                // Record success if backoff is enabled
+                if (enableBackoff) {
+                  await cronBackoffService.recordSuccess(jobKey);
+                }
+              } catch (error: any) {
                 console.error(`Error executing scheduled workflow ${workflow.id}:`, error);
+                
+                // Check if backoff is enabled
+                try {
+                  const enableBackoff = await featureFlagService.isEnabled(
+                    'enable_cron_backoff',
+                    undefined,
+                    workflow.workspaceId
+                  );
+
+                  if (enableBackoff) {
+                    // Record failure and calculate backoff
+                    const backoffState = await cronBackoffService.recordFailure(jobKey);
+                    
+                    if (backoffState.disabled) {
+                      console.error(
+                        `[Scheduler] Scheduled workflow ${workflow.id} disabled after ${backoffState.consecutiveFailures} consecutive failures`
+                      );
+                    } else {
+                      console.warn(
+                        `[Scheduler] Scheduled workflow ${workflow.id} will retry after backoff period. ` +
+                        `Next retry: ${backoffState.nextRetryAt?.toISOString()}, ` +
+                        `Consecutive failures: ${backoffState.consecutiveFailures}`
+                      );
+                    }
+                  }
+                } catch (backoffError: any) {
+                  console.warn(`[Scheduler] Failed to record backoff for workflow ${workflow.id}:`, backoffError);
+                }
               }
             },
             {
