@@ -61,6 +61,7 @@
     "imap": "^0.8.19",
     "ioredis": "^5.3.2",
     "langchain": "^1.0.4",
+    "langfuse": "^3.38.6",
     "mailparser": "^3.9.0",
     "mammoth": "^1.11.0",
     "mongodb": "^7.0.0",
