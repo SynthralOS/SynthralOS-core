@@ -717,7 +717,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
     return {
       success: true,
       output: {
-        text: result.content,
+        text: validatedOutput, // Use validated output if validation was performed
         tokens: result.tokensUsed,
       },
       metadata: {
