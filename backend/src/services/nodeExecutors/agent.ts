@@ -128,6 +128,47 @@ export async function executeAgent(
     };
   }
 
+  // Guardrails: Check prompt length
+  try {
+    const enableLengthCheck = await featureFlagService.isEnabled(
+      'enable_prompt_length_check',
+      context.userId,
+      (context as any).workspaceId
+    );
+
+    if (enableLengthCheck) {
+      const lengthCheck = guardrailsService.checkPromptLength(query, {
+        minLength: nodeConfig.minPromptLength,
+        maxLength: nodeConfig.maxPromptLength,
+        minTokens: nodeConfig.minTokens,
+        maxTokens: nodeConfig.maxTokens || 128000,
+        warnThreshold: nodeConfig.lengthWarnThreshold || 0.8,
+        model: (nodeConfig.model as string) || 'gpt-4',
+        provider: (nodeConfig.provider as 'openai' | 'anthropic' | 'google') || 'openai',
+      });
+
+      if (!lengthCheck.valid) {
+        return {
+          success: false,
+          error: {
+            message: `Prompt length check failed: ${lengthCheck.errors?.join(', ')}`,
+            code: 'PROMPT_LENGTH_ERROR',
+            details: {
+              length: lengthCheck.length,
+              tokenEstimate: lengthCheck.tokenEstimate,
+              errors: lengthCheck.errors,
+              warnings: lengthCheck.warnings,
+              recommendedModel: lengthCheck.recommendedModel,
+            },
+          },
+        };
+      }
+    }
+  } catch (error: any) {
+    console.warn('[Agent Executor] Prompt length check failed:', error);
+    // Continue execution if length check fails
+  }
+
   // Guardrails: Check prompt similarity (if enabled)
   try {
     const enableSimilarityCheck = await featureFlagService.isEnabled(

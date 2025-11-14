@@ -43,6 +43,16 @@ export interface AbuseCheckResult {
   action: 'allow' | 'warn' | 'block';
 }
 
+export interface PromptLengthResult {
+  valid: boolean;
+  length: number; // Character count
+  tokenEstimate?: number; // Estimated token count (rough approximation: ~4 chars per token)
+  warnings?: string[];
+  errors?: string[];
+  recommendedModel?: string; // Model recommendation based on length
+  action?: 'allow' | 'warn' | 'block';
+}
+
 /**
  * Guardrails Service
  */
@@ -342,6 +352,130 @@ export class GuardrailsService {
       similar: maxSimilarity > 0.7,
       similarityScore: maxSimilarity,
       matchedPrompts: matchedPrompts.length > 0 ? matchedPrompts : undefined,
+    };
+  }
+
+  /**
+   * Check prompt length and validate against limits
+   * 
+   * @param prompt - The prompt to check
+   * @param options - Configuration options
+   * @returns Prompt length validation result
+   */
+  checkPromptLength(
+    prompt: string,
+    options: {
+      minLength?: number; // Minimum character length (default: 1)
+      maxLength?: number; // Maximum character length (default: 100000)
+      minTokens?: number; // Minimum token estimate (default: 1)
+      maxTokens?: number; // Maximum token estimate (default: 128000 for GPT-4)
+      warnThreshold?: number; // Warning threshold as percentage of max (default: 0.8 = 80%)
+      model?: string; // Current model being used
+      provider?: 'openai' | 'anthropic' | 'google';
+    } = {}
+  ): PromptLengthResult {
+    const {
+      minLength = 1,
+      maxLength = 100000, // ~25k tokens at 4 chars/token
+      minTokens = 1,
+      maxTokens = 128000, // GPT-4 context window
+      warnThreshold = 0.8,
+      model,
+      provider = 'openai',
+    } = options;
+
+    const length = prompt.length;
+    // Rough token estimation: ~4 characters per token (varies by language)
+    const tokenEstimate = Math.ceil(length / 4);
+
+    const warnings: string[] = [];
+    const errors: string[] = [];
+    let recommendedModel: string | undefined;
+    let action: 'allow' | 'warn' | 'block' = 'allow';
+
+    // Check minimum length
+    if (length < minLength) {
+      errors.push(`Prompt is too short: ${length} characters (minimum: ${minLength})`);
+      action = 'block';
+    }
+
+    // Check maximum length
+    if (length > maxLength) {
+      errors.push(`Prompt is too long: ${length} characters (maximum: ${maxLength})`);
+      action = 'block';
+    }
+
+    // Check token limits
+    if (tokenEstimate < minTokens) {
+      errors.push(`Prompt token estimate too low: ~${tokenEstimate} tokens (minimum: ${minTokens})`);
+      action = 'block';
+    }
+
+    if (tokenEstimate > maxTokens) {
+      errors.push(`Prompt token estimate too high: ~${tokenEstimate} tokens (maximum: ${maxTokens})`);
+      action = 'block';
+    }
+
+    // Warning thresholds
+    const lengthPercentage = length / maxLength;
+    const tokenPercentage = tokenEstimate / maxTokens;
+
+    if (lengthPercentage >= warnThreshold && lengthPercentage < 1.0) {
+      warnings.push(`Prompt is ${(lengthPercentage * 100).toFixed(1)}% of maximum length`);
+      if (action === 'allow') {
+        action = 'warn';
+      }
+    }
+
+    if (tokenPercentage >= warnThreshold && tokenPercentage < 1.0) {
+      warnings.push(`Prompt token estimate is ${(tokenPercentage * 100).toFixed(1)}% of maximum tokens`);
+      if (action === 'allow') {
+        action = 'warn';
+      }
+    }
+
+    // Model recommendations based on length
+    if (tokenEstimate > 0) {
+      if (tokenEstimate <= 4000) {
+        // Short prompts: use cheaper models
+        if (provider === 'openai') {
+          recommendedModel = model && model.includes('gpt-4') ? 'gpt-3.5-turbo' : model || 'gpt-3.5-turbo';
+        } else if (provider === 'anthropic') {
+          recommendedModel = model && model.includes('opus') ? 'claude-3-haiku' : model || 'claude-3-haiku';
+        }
+      } else if (tokenEstimate <= 16000) {
+        // Medium prompts: use mid-tier models
+        if (provider === 'openai') {
+          recommendedModel = model || 'gpt-3.5-turbo-16k';
+        } else if (provider === 'anthropic') {
+          recommendedModel = model || 'claude-3-sonnet';
+        }
+      } else if (tokenEstimate <= 128000) {
+        // Long prompts: use high-capacity models
+        if (provider === 'openai') {
+          recommendedModel = model || 'gpt-4-turbo';
+        } else if (provider === 'anthropic') {
+          recommendedModel = model || 'claude-3-opus';
+        }
+      } else {
+        // Very long prompts: may need chunking or special handling
+        warnings.push(`Prompt is very long (${tokenEstimate} tokens). Consider chunking or using a model with larger context window.`);
+        if (provider === 'openai') {
+          recommendedModel = 'gpt-4-turbo'; // Largest context window
+        } else if (provider === 'anthropic') {
+          recommendedModel = 'claude-3-opus';
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      length,
+      tokenEstimate,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      errors: errors.length > 0 ? errors : undefined,
+      recommendedModel,
+      action,
     };
   }
 

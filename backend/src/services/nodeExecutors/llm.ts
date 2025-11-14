@@ -44,6 +44,77 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
     const spanContext = span.spanContext();
     traceId = spanContext.traceId;
 
+    // Guardrails: Check prompt length
+    try {
+      const enableLengthCheck = await featureFlagService.isEnabled(
+        'enable_prompt_length_check',
+        context.userId,
+        (context as any).workspaceId
+      );
+
+      if (enableLengthCheck) {
+        const lengthCheck = guardrailsService.checkPromptLength(prompt, {
+          minLength: nodeConfig.minPromptLength,
+          maxLength: nodeConfig.maxPromptLength,
+          minTokens: nodeConfig.minTokens,
+          maxTokens: nodeConfig.maxTokens || 128000,
+          warnThreshold: nodeConfig.lengthWarnThreshold || 0.8,
+          model: modelName,
+          provider,
+        });
+
+        span.setAttributes({
+          'guardrails.prompt_length': lengthCheck.length,
+          'guardrails.token_estimate': lengthCheck.tokenEstimate || 0,
+          'guardrails.length_check': lengthCheck.valid ? 'passed' : 'failed',
+        });
+
+        if (!lengthCheck.valid) {
+          span.setAttributes({
+            'guardrails.length_errors': lengthCheck.errors?.join('; ') || '',
+          });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: 'Prompt length check failed' });
+          span.end();
+
+          return {
+            success: false,
+            error: {
+              message: `Prompt length check failed: ${lengthCheck.errors?.join(', ')}`,
+              code: 'PROMPT_LENGTH_ERROR',
+              details: {
+                length: lengthCheck.length,
+                tokenEstimate: lengthCheck.tokenEstimate,
+                errors: lengthCheck.errors,
+                warnings: lengthCheck.warnings,
+                recommendedModel: lengthCheck.recommendedModel,
+              },
+            },
+          };
+        }
+
+        if (lengthCheck.warnings && lengthCheck.warnings.length > 0) {
+          span.setAttributes({
+            'guardrails.length_warnings': lengthCheck.warnings.join('; '),
+          });
+        }
+
+        // Update model if recommendation is different and auto-routing is enabled
+        if (lengthCheck.recommendedModel && 
+            lengthCheck.recommendedModel !== modelName &&
+            nodeConfig.autoRouteByLength !== false) {
+          span.setAttributes({
+            'guardrails.model_recommendation': lengthCheck.recommendedModel,
+            'guardrails.original_model': modelName,
+          });
+          // Note: In a full implementation, we would update the model here
+          // For now, we just log the recommendation
+        }
+      }
+    } catch (error: any) {
+      console.warn('[LLM Executor] Prompt length check failed:', error);
+      // Continue execution if length check fails
+    }
+
     // Guardrails: Check prompt similarity (if enabled)
     try {
       const enableSimilarityCheck = await featureFlagService.isEnabled(
