@@ -14,8 +14,9 @@ import { db } from '../config/database';
 import { eventLogs, workspaces } from '../../drizzle/schema';
 import { createId } from '@paralleldrive/cuid2';
 import { lt, eq, and, gte, inArray } from 'drizzle-orm';
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { rudderstackService } from './rudderstackService';
+import { langfuseService } from './langfuseService';
 
 interface AgentSpanContext {
   agentId: string;
@@ -90,7 +91,7 @@ export class ObservabilityService {
 
   /**
    * Record agent execution metrics
-   * Writes to event_logs table
+   * Writes to event_logs table and exports to Langfuse
    */
   async recordExecution(
     framework: string,
@@ -101,7 +102,13 @@ export class ObservabilityService {
     traceId?: string,
     tokensUsed?: number,
     cost?: number,
-    error?: string
+    error?: string,
+    agentId?: string,
+    query?: string,
+    executionId?: string,
+    organizationId?: string,
+    startTime?: Date,
+    endTime?: Date
   ): Promise<void> {
     try {
       // Get trace ID from OpenTelemetry context if not provided
@@ -118,6 +125,16 @@ export class ObservabilityService {
         }
       }
 
+      // Generate trace ID if still not available
+      if (!finalTraceId) {
+        finalTraceId = createId();
+      }
+
+      const now = new Date();
+      const executionStartTime = startTime || new Date(now.getTime() - duration);
+      const executionEndTime = endTime || now;
+
+      // Write to database
       await db.insert(eventLogs).values({
         id: createId(),
         userId: userId || null,
@@ -128,12 +145,49 @@ export class ObservabilityService {
           tokensUsed,
           cost,
           error,
+          agentId,
+          query,
+          executionId,
         },
         status: success ? 'success' : 'error',
         latencyMs: duration,
         traceId: finalTraceId || null,
-        timestamp: new Date(),
+        timestamp: executionEndTime,
       });
+
+      // Export to Langfuse (async, non-blocking)
+      if (langfuseService.isEnabled() && agentId && query && executionId) {
+        langfuseService.exportAgentExecution({
+          traceId: finalTraceId,
+          agentId,
+          framework,
+          query,
+          executionId,
+          userId,
+          organizationId,
+          workspaceId,
+          startTime: executionStartTime,
+          endTime: executionEndTime,
+          success,
+          error,
+          cost,
+          tokens: tokensUsed
+            ? {
+                total: tokensUsed,
+                // Split tokens if we have more info (could be enhanced)
+                prompt: Math.floor(tokensUsed * 0.7), // Estimate
+                completion: Math.floor(tokensUsed * 0.3), // Estimate
+              }
+            : undefined,
+          metadata: {
+            duration,
+            latencyMs: duration,
+          },
+        }).catch((err: any) => {
+          // Log but don't throw - Langfuse export should not break execution
+          console.warn('[Observability] Langfuse export failed:', err);
+        });
+      }
 
       // Forward to RudderStack
       if (userId && workspaceId) {
