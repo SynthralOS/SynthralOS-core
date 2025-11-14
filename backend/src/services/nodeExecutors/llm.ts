@@ -7,6 +7,7 @@ import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { featureFlagService } from '../featureFlagService';
 import { costCalculationService } from '../costCalculationService';
 import { guardrailsService } from '../guardrailsService';
+import { langfuseService } from '../langfuseService';
 import { eq } from 'drizzle-orm';
 
 export async function executeLLM(context: NodeExecutionContext): Promise<NodeExecutionResult> {
@@ -309,6 +310,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       // Continue execution if similarity check fails
     }
 
+    const llmStartTime = new Date();
     const result = await aiService.generateText({
       prompt,
       config: {
@@ -323,6 +325,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         context: input.context,
       },
     });
+    const llmEndTime = new Date();
 
     // Calculate cost details using cost calculation service
     // tokensUsed can be a number or an object with input/output
