@@ -5,6 +5,7 @@ import { modelCostLogs } from '../../../drizzle/schema';
 import { createId } from '@paralleldrive/cuid2';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { featureFlagService } from '../featureFlagService';
+import { costCalculationService } from '../costCalculationService';
 
 export async function executeLLM(context: NodeExecutionContext): Promise<NodeExecutionResult> {
   const { input, config } = context;
@@ -57,7 +58,7 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       },
     });
 
-    // Calculate cost details
+    // Calculate cost details using cost calculation service
     // tokensUsed can be a number or an object with input/output
     let inputTokens = 0;
     let outputTokens = 0;
@@ -70,8 +71,8 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         inputTokens = tokenUsage.promptTokens || tokenUsage.inputTokens || 0;
         outputTokens = tokenUsage.completionTokens || tokenUsage.outputTokens || 0;
       } else {
-        // If no breakdown, estimate 50/50 split (rough approximation)
-        inputTokens = Math.floor(result.tokensUsed / 2);
+        // If no breakdown, estimate 60/40 split (input/output) as a rough approximation
+        inputTokens = Math.floor(result.tokensUsed * 0.6);
         outputTokens = result.tokensUsed - inputTokens;
       }
     } else if (result.tokensUsed && typeof result.tokensUsed === 'object') {
@@ -79,12 +80,18 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       outputTokens = (result.tokensUsed as any).output || 0;
     }
     
-    const totalTokens = inputTokens + outputTokens;
-    const cost = result.cost || 0;
+    // Use cost calculation service to calculate accurate costs
+    const costResult = costCalculationService.calculate({
+      provider,
+      model: modelName,
+      inputTokens,
+      outputTokens,
+    });
     
-    // Calculate rate per 1k tokens (in cents for precision)
-    const ratePer1k = totalTokens > 0 ? Math.round((cost / totalTokens) * 1000 * 100) : 0;
-    const costUsdCents = Math.round(cost * 100); // Convert to cents
+    const totalTokens = costResult.totalTokens;
+    const cost = costResult.totalCost; // Use calculated cost instead of result.cost
+    const ratePer1k = costResult.ratePer1k;
+    const costUsdCents = costResult.costUsdCents;
 
     const latencyMs = Date.now() - startTime;
 
@@ -112,14 +119,24 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
         await db.insert(modelCostLogs).values({
           id: createId(),
           userId: context.userId || null,
-          agentId: context.workflowId || null,
-          modelName: `${provider}:${modelName}`,
+          agentId: null, // Will be set if this is a code agent execution
+          workflowExecutionId: context.executionId || null,
+          nodeId: context.nodeId || null,
+          modelName: modelName,
+          provider: provider,
           inputTokens,
           outputTokens,
-          ratePer1k,
+          tokensTotal: totalTokens,
+          ratePer1k: ratePer1k || null,
           costUsd: costUsdCents,
-          traceId: traceId || context.executionId || null,
+          usdCost: cost.toString(), // Store as decimal
+          prompt: prompt.length > 1000 ? prompt.substring(0, 1000) + '...' : prompt, // Truncate if too long
+          response: result.content.length > 1000 ? result.content.substring(0, 1000) + '...' : result.content, // Truncate if too long
+          traceId: traceId || null,
+          organizationId: (context as any).organizationId || null,
+          workspaceId: (context as any).workspaceId || null,
           timestamp: new Date(),
+          createdAt: new Date(),
         });
       }
     } catch (err: any) {
@@ -135,7 +152,12 @@ export async function executeLLM(context: NodeExecutionContext): Promise<NodeExe
       },
       metadata: {
         tokensUsed: result.tokensUsed,
-        cost: result.cost,
+        cost: cost,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        inputCost: costResult.inputCost,
+        outputCost: costResult.outputCost,
       },
     };
   } catch (error: any) {
