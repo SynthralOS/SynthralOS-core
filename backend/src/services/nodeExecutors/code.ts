@@ -174,6 +174,13 @@ export async function executeCode(
         requiresSandbox: nodeConfig.requiresSandbox,
         longJob: nodeConfig.longJob,
         expectedDuration: nodeConfig.expectedDuration,
+      }, {
+        userId: context.userId,
+        organizationId: context.organizationId,
+        workspaceId: context.workspaceId,
+        workflowId,
+        nodeId,
+        executionId,
       });
       
       // Update actual runtime based on router decision
