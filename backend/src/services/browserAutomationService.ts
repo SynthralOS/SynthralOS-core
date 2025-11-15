@@ -4,6 +4,8 @@ import { BrowserPoolService, BrowserSession, browserPoolService } from './browse
 import { BrowserSwitchService, BrowserTaskConfig, browserSwitchService } from './browserSwitchService';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { proxyService, ProxyConfig } from './proxyService';
+import { db } from '../config/database';
+import { browserRuns } from '../../drizzle/schema';
 
 /**
  * Browser Automation Service
@@ -161,6 +163,27 @@ export class BrowserAutomationService {
       }
 
       span.end();
+
+      // Log to database (async, don't wait)
+      this.logBrowserRun({
+        organizationId: config.context?.organizationId,
+        workspaceId: config.context?.workspaceId,
+        userId: config.context?.userId,
+        tool: result.metadata.engine,
+        action: result.action,
+        url: config.url,
+        status: result.success ? 'completed' : 'failed',
+        success: result.success,
+        latencyMs: latency,
+        errorMessage: result.error,
+        metadata: {
+          data: result.data,
+          screenshot: result.screenshot ? 'present' : undefined,
+          html: result.html ? 'present' : undefined,
+        },
+      }).catch((err) => {
+        console.error('Failed to log browser run:', err);
+      });
 
       return {
         ...result,
@@ -543,6 +566,42 @@ export class BrowserAutomationService {
         latency: 0,
       },
     };
+  }
+
+  /**
+   * Log browser run to database
+   */
+  private async logBrowserRun(event: {
+    organizationId?: string;
+    workspaceId?: string;
+    userId?: string;
+    tool: string;
+    action: string;
+    url?: string;
+    status: string;
+    success: boolean;
+    latencyMs: number;
+    errorMessage?: string;
+    metadata?: Record<string, any>;
+  }): Promise<void> {
+    try {
+      await db.insert(browserRuns).values({
+        organizationId: event.organizationId || null,
+        workspaceId: event.workspaceId || null,
+        userId: event.userId || null,
+        tool: event.tool,
+        action: event.action,
+        url: event.url || null,
+        status: event.status as any,
+        success: event.success,
+        latencyMs: event.latencyMs || null,
+        errorMessage: event.errorMessage || null,
+        metadata: event.metadata || null,
+      });
+    } catch (error) {
+      // Silently fail - logging should not break browser automation
+      console.error('Failed to log browser run:', error);
+    }
   }
 }
 

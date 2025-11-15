@@ -1131,3 +1131,37 @@ export const codeSchemas = pgTable('code_schemas', {
   createdAtIdx: index('code_schemas_created_at_idx').on(table.createdAt),
 }));
 
+// Browser Runs (Browser Automation PRD)
+export const browserRuns = pgTable('browser_runs', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  workflowId: text('workflow_id').references(() => workflows.id, { onDelete: 'set null' }),
+  executionId: text('execution_id'), // Workflow execution ID
+  nodeId: text('node_id'), // Workflow node ID
+  tool: text('tool').notNull(), // 'playwright' | 'puppeteer' | 'browserbase' | 'browser-use' | 'ai-browser-agent'
+  action: text('action').notNull(), // 'navigate' | 'click' | 'fill' | 'extract' | 'screenshot' | 'wait' | 'evaluate'
+  url: text('url'), // URL accessed
+  status: text('status').notNull().default('pending'), // 'pending' | 'running' | 'completed' | 'failed' | 'blocked'
+  success: boolean('success').default(false).notNull(),
+  latencyMs: integer('latency_ms'), // Execution latency in milliseconds
+  blockReason: text('block_reason'), // Reason for block (e.g., 'cloudflare', '403', '429', 'captcha')
+  errorMessage: text('error_message'), // Error message if failed
+  metadata: jsonb('metadata'), // Additional metadata (screenshot, extracted data, etc.)
+  proxyId: text('proxy_id').references(() => proxyPools.id, { onDelete: 'set null' }),
+  stealthMode: boolean('stealth_mode').default(false).notNull(), // Whether stealth features were used
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  organizationIdIdx: index('browser_runs_organization_id_idx').on(table.organizationId),
+  workspaceIdIdx: index('browser_runs_workspace_id_idx').on(table.workspaceId),
+  userIdIdx: index('browser_runs_user_id_idx').on(table.userId),
+  workflowIdIdx: index('browser_runs_workflow_id_idx').on(table.workflowId),
+  executionIdIdx: index('browser_runs_execution_id_idx').on(table.executionId),
+  toolIdx: index('browser_runs_tool_idx').on(table.tool),
+  statusIdx: index('browser_runs_status_idx').on(table.status),
+  successIdx: index('browser_runs_success_idx').on(table.success),
+  createdAtIdx: index('browser_runs_created_at_idx').on(table.createdAt),
+}));
+

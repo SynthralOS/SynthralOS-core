@@ -2,6 +2,7 @@ import { NodeExecutionContext, NodeExecutionResult } from '@sos/shared';
 import { browserAutomationService, BrowserActionConfig } from '../browserAutomationService';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { posthogService } from '../posthogService';
+import { featureFlagService } from '../featureFlagService';
 
 /**
  * Browser Automation Node Executor
@@ -31,6 +32,32 @@ export async function executeBrowserAutomation(
   const startTime = Date.now();
 
   try {
+    // Check feature flag
+    const isEnabled = await featureFlagService.isEnabled(
+      'enable_browser_automation_node',
+      userId,
+      workspaceId
+    );
+
+    if (!isEnabled) {
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: 'Browser automation node is disabled by feature flag',
+      });
+      span.end();
+
+      return {
+        success: false,
+        error: {
+          message: 'Browser automation node is disabled. Please enable the feature flag: enable_browser_automation_node',
+          code: 'FEATURE_DISABLED',
+        },
+        metadata: {
+          executionTime: Date.now() - startTime,
+        },
+      };
+    }
+
     // Get action from config or input
     const action = (nodeConfig.action as string) || (input.action as string) || 'navigate';
     
