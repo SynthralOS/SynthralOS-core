@@ -71,6 +71,8 @@ export class LangToolsService {
     this.initializeBuiltInTools();
     // Register code execution tool for agents
     this.registerCodeExecutionTool();
+    // Register browser automation tool
+    this.registerBrowserAutomationTool();
   }
 
   /**
@@ -267,6 +269,73 @@ export class LangToolsService {
     return async (toolName: string, input: any): Promise<string> => {
       return await this.executeTool(toolName, input);
     };
+  }
+
+  /**
+   * Register browser automation tool for agents
+   * This allows agents to autonomously interact with web pages
+   */
+  registerBrowserAutomationTool(): void {
+    this.registerTool({
+      name: 'browser_automation',
+      description: `Execute browser automation actions. Available actions:
+- navigate: Navigate to a URL (requires: url)
+- click: Click an element by CSS selector (requires: selector)
+- fill: Fill a form field by CSS selector (requires: selector, value)
+- extract: Extract data using CSS selectors (requires: extractSelectors object)
+- screenshot: Take a screenshot of the current page
+- wait: Wait for a selector or timeout (requires: waitForSelector or waitTimeout)
+- evaluate: Execute JavaScript in page context (requires: evaluateScript)
+
+Example: {"action": "navigate", "url": "https://example.com", "screenshot": true}`,
+      type: 'custom',
+      schema: z.object({
+        action: z.enum(['navigate', 'click', 'fill', 'extract', 'screenshot', 'wait', 'evaluate']).describe('Browser action to execute'),
+        url: z.string().optional().describe('URL to navigate to (for navigate action)'),
+        selector: z.string().optional().describe('CSS selector for click/fill actions'),
+        value: z.string().optional().describe('Value to fill (for fill action)'),
+        extractSelectors: z.record(z.string()).optional().describe('Object mapping field names to CSS selectors (for extract action)'),
+        waitForSelector: z.string().optional().describe('CSS selector to wait for (for wait action)'),
+        waitTimeout: z.number().optional().describe('Timeout in milliseconds'),
+        screenshot: z.boolean().optional().describe('Take screenshot (for navigate action)'),
+        evaluateScript: z.string().optional().describe('JavaScript code to execute (for evaluate action)'),
+        explicitEngine: z.enum(['playwright', 'puppeteer']).optional().describe('Explicit browser engine to use'),
+        useProxy: z.boolean().optional().describe('Use proxy for this request'),
+      }),
+      handler: async (input: any) => {
+        // Import browser automation service
+        const { browserAutomationService } = await import('./browserAutomationService');
+        
+        // Execute browser action
+        const result = await browserAutomationService.executeAction({
+          action: input.action,
+          url: input.url,
+          selector: input.selector,
+          value: input.value,
+          extractSelectors: input.extractSelectors,
+          waitForSelector: input.waitForSelector,
+          waitTimeout: input.waitTimeout,
+          screenshot: input.screenshot,
+          evaluateScript: input.evaluateScript,
+          explicitEngine: input.explicitEngine,
+          useProxy: input.useProxy,
+        });
+
+        if (result.success) {
+          return JSON.stringify({
+            success: true,
+            action: result.action,
+            data: result.data,
+            metadata: result.metadata,
+          });
+        } else {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+          });
+        }
+      },
+    });
   }
 
   /**

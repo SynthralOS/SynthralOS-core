@@ -6,6 +6,7 @@ import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { proxyService, ProxyConfig } from './proxyService';
 import { db } from '../config/database';
 import { browserRuns } from '../../drizzle/schema';
+import { stealthMiddleware, StealthConfig } from './stealthMiddleware';
 
 /**
  * Browser Automation Service
@@ -35,6 +36,8 @@ export interface BrowserActionConfig {
   htmlType?: 'static' | 'dynamic';
   requiresInteraction?: boolean;
   useProxy?: boolean;
+  // Stealth options
+  stealth?: StealthConfig;
 }
 
 export interface BrowserActionResult {
@@ -112,9 +115,33 @@ export class BrowserAutomationService {
         const browser = session.browser as Browser;
         const context = session.context || (await browser.newContext());
         page = await context.newPage();
+        
+        // Apply stealth if configured
+        if (config.stealth) {
+          const stealthScripts = stealthMiddleware.generateStealthConfig(config.stealth);
+          if (stealthScripts.userAgent) {
+            await context.setExtraHTTPHeaders({
+              'User-Agent': stealthScripts.userAgent,
+            });
+          }
+          if (stealthScripts.scripts.length > 0) {
+            await page.addInitScript(stealthScripts.scripts.join('\n'));
+          }
+        }
       } else {
         const browser = session.browser as PuppeteerBrowser;
         page = await browser.newPage();
+        
+        // Apply stealth if configured
+        if (config.stealth) {
+          const stealthScripts = stealthMiddleware.generateStealthConfig(config.stealth);
+          if (stealthScripts.userAgent) {
+            await page.setUserAgent(stealthScripts.userAgent);
+          }
+          if (stealthScripts.scripts.length > 0) {
+            await page.evaluateOnNewDocument(stealthScripts.scripts.join('\n'));
+          }
+        }
       }
 
       // Execute action based on type

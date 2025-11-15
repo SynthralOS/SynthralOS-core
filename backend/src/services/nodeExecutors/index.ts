@@ -41,6 +41,7 @@ import { executeHumanPrompt } from './humanPrompt';
 import { executeWebScrape } from './webScrape';
 import { executeBrowserAutomation } from './browserAutomation';
 import { executeBrowserSwitch } from './browserSwitch';
+import { executeAIBrowserAgent } from './aiBrowserAgent';
 
 export async function executeNode(context: NodeExecutionContext): Promise<NodeExecutionResult> {
   const { nodeId, config } = context;
@@ -76,6 +77,8 @@ export async function executeNode(context: NodeExecutionContext): Promise<NodeEx
       result = await executeBrowserAutomation(context);
     } else if (nodeType === 'action.browser_switch') {
       result = await executeBrowserSwitch(context);
+    } else if (nodeType === 'ai.browser_agent') {
+      result = await executeAIBrowserAgent(context);
     } else if (nodeType === 'ai.llm') {
       result = await executeLLM(context);
     } else if (nodeType === 'ai.embedding') {
