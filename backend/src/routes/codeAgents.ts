@@ -418,6 +418,44 @@ router.get('/registry/public', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Deploy to MCP Server endpoint
+router.post('/:id/deploy-mcp', authenticate, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const agentId = req.params.id;
+    const agent = await codeAgentRegistry.getAgent(agentId, {
+      organizationId: req.organizationId,
+      workspaceId: req.workspaceId,
+      userId: req.user.id,
+    });
+
+    if (!agent) {
+      res.status(404).json({ error: 'Agent not found' });
+      return;
+    }
+
+    // TODO: Implement MCP Server deployment
+    // This would involve:
+    // 1. Generate MCP server configuration
+    // 2. Deploy to MCP Server (if configured)
+    // 3. Return deployment status
+
+    res.json({
+      success: true,
+      message: 'MCP Server deployment is not yet implemented',
+      agentId: agent.id,
+      note: 'This feature requires MCP Server setup and configuration',
+    });
+  } catch (error: any) {
+    console.error('Error deploying to MCP Server:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 // Code suggestions endpoint
 router.post('/suggestions', authenticate, async (req: AuthRequest, res) => {
   try {

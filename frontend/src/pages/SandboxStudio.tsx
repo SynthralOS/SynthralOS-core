@@ -271,6 +271,22 @@ export default function SandboxStudio() {
                   Export as Tool
                 </button>
                 <button
+                  onClick={async () => {
+                    try {
+                      // Deploy to MCP Server
+                      const response = await api.post(`/code-agents/${selectedAgent.id}/deploy-mcp`);
+                      alert('Agent deployed to MCP Server successfully!');
+                    } catch (error: any) {
+                      console.error('Failed to deploy to MCP Server:', error);
+                      alert(`Failed to deploy: ${error.response?.data?.error || error.message}`);
+                    }
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  title="Deploy this agent to MCP Server"
+                >
+                  Deploy to MCP Server
+                </button>
+                <button
                   onClick={() => deleteMutation.mutate(selectedAgent.id)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
