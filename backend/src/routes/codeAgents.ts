@@ -418,5 +418,104 @@ router.get('/registry/public', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Code suggestions endpoint
+router.post('/suggestions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { codeSuggestionService } = await import('../services/codeSuggestionService');
+    
+    if (!codeSuggestionService.isEnabled()) {
+      res.status(503).json({ error: 'Code suggestions are not enabled' });
+      return;
+    }
+
+    const suggestion = await codeSuggestionService.getSuggestions({
+      code: req.body.code,
+      language: req.body.language,
+      context: req.body.context,
+      suggestionType: req.body.suggestionType || 'improve',
+      cursorPosition: req.body.cursorPosition,
+    });
+
+    if (!suggestion) {
+      res.status(500).json({ error: 'Failed to generate suggestion' });
+      return;
+    }
+
+    res.json(suggestion);
+  } catch (error: any) {
+    console.error('Error getting code suggestion:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Code review endpoint
+router.post('/review', authenticate, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { codeReviewService } = await import('../services/codeReviewService');
+    
+    if (!codeReviewService.isEnabled()) {
+      res.status(503).json({ error: 'Code review is not enabled' });
+      return;
+    }
+
+    const review = await codeReviewService.reviewCode({
+      code: req.body.code,
+      language: req.body.language,
+      reviewType: req.body.reviewType || 'comprehensive',
+      context: req.body.context,
+    });
+
+    if (!review) {
+      res.status(500).json({ error: 'Failed to generate review' });
+      return;
+    }
+
+    res.json(review);
+  } catch (error: any) {
+    console.error('Error reviewing code:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Sandbox escape detection endpoint
+router.post('/check-escape', authenticate, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { sandboxEscapeDetectionService } = await import('../services/sandboxEscapeDetectionService');
+    
+    const result = sandboxEscapeDetectionService.analyzeCode(
+      req.body.code,
+      req.body.language
+    );
+
+    const shouldBlock = sandboxEscapeDetectionService.shouldBlock(
+      result,
+      (req.body.blockThreshold as 'low' | 'medium' | 'high' | 'critical') || 'high'
+    );
+
+    res.json({
+      ...result,
+      shouldBlock,
+    });
+  } catch (error: any) {
+    console.error('Error checking for escape attempts:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 export default router;
 

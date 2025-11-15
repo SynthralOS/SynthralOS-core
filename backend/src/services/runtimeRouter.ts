@@ -281,12 +281,25 @@ export class RuntimeRouter {
         }
 
       case 'bacalhau':
-        // TODO: Implement Bacalhau runtime
-        // For now, fallback to default
-        return await this.executeWithRuntime(
-          config.language === 'javascript' || config.language === 'typescript' ? 'vm2' : 'subprocess',
-          config
-        );
+        // Import Bacalhau runtime
+        const { bacalhauRuntime } = await import('./runtimes/bacalhauRuntime');
+        if (bacalhauRuntime.checkAvailability()) {
+          return await bacalhauRuntime.execute(
+            config.code,
+            config.language,
+            config.input,
+            config.timeout || 300000,
+            {
+              gpu: config.longJob, // Use GPU for long jobs if configured
+            }
+          );
+        } else {
+          // Fallback to default if Bacalhau not available
+          return await this.executeWithRuntime(
+            config.language === 'javascript' || config.language === 'typescript' ? 'vm2' : 'subprocess',
+            config
+          );
+        }
 
       case 'vm2':
       case 'subprocess':

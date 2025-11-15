@@ -116,6 +116,50 @@ export async function executeCode(
     };
   }
 
+  // Check for sandbox escape attempts
+  const { sandboxEscapeDetectionService } = await import('../sandboxEscapeDetectionService');
+  const escapeDetection = sandboxEscapeDetectionService.analyzeCode(code, language);
+  
+  if (escapeDetection.detected) {
+    const shouldBlock = sandboxEscapeDetectionService.shouldBlock(escapeDetection, 'high');
+    
+    if (shouldBlock) {
+      span.setAttributes({
+        'code.escape_detected': true,
+        'code.escape_severity': escapeDetection.severity,
+        'code.escape_patterns': escapeDetection.patterns.join(', '),
+      });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: 'Sandbox escape attempt detected',
+      });
+      
+      return {
+        success: false,
+        error: {
+          message: `Code execution blocked: ${escapeDetection.description}`,
+          code: 'SANDBOX_ESCAPE_DETECTED',
+          details: {
+            severity: escapeDetection.severity,
+            patterns: escapeDetection.patterns,
+            recommendation: escapeDetection.recommendation,
+          },
+        },
+      };
+    } else {
+      // Log warning but allow execution
+      span.setAttributes({
+        'code.escape_detected': true,
+        'code.escape_severity': escapeDetection.severity,
+        'code.escape_warning': true,
+      });
+      console.warn(`[Sandbox Escape Warning] ${escapeDetection.description}`, {
+        patterns: escapeDetection.patterns,
+        severity: escapeDetection.severity,
+      });
+    }
+  }
+
   const tracer = trace.getTracer('sos-code-executor');
   const span = tracer.startSpan('code.execute', {
     attributes: {

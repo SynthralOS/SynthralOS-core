@@ -17,7 +17,9 @@
     "db:check-migrations": "tsx scripts/check-and-apply-migrations.ts",
     "test:typescript": "tsx scripts/test-typescript-execution.ts",
     "test:bash": "tsx scripts/test-bash-execution.ts",
-    "test:e2b": "tsx scripts/test-e2b-execution.ts"
+    "test:e2b": "tsx scripts/test-e2b-execution.ts",
+    "test:etl-hooks": "tsx scripts/test-etl-hooks.ts",
+    "test:agent-code": "tsx scripts/test-agent-code-execution.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.9.1",
