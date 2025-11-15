@@ -126,22 +126,12 @@ export class BrowserSwitchService {
         }
       }
 
-      // 4. Autonomous web exploration → AI Browser Agent (uses Playwright)
+      // 4. Autonomous web exploration → AI Browser Agent (uses Playwright) - fallback if Stagehand not available
       if (!decision && taskConfig.autonomousWebExploration) {
         decision = this.createDecision(
           'playwright',
           'Autonomous exploration requires Playwright for full control',
           0.9,
-          taskConfig
-        );
-      }
-
-      // 5. Massive browser scale → Browserbase + Stagehand (fallback to Playwright for now)
-      if (!decision && taskConfig.massiveBrowserScale) {
-        decision = this.createDecision(
-          'playwright',
-          'Massive scale requirement, using Playwright (Browserbase integration pending)',
-          0.7,
           taskConfig
         );
       }
