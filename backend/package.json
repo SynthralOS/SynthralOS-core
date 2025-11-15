@@ -14,7 +14,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:apply-migrations": "tsx scripts/apply-all-migrations.ts",
-    "db:check-migrations": "tsx scripts/check-and-apply-migrations.ts"
+    "db:check-migrations": "tsx scripts/check-and-apply-migrations.ts",
+    "test:typescript": "tsx scripts/test-typescript-execution.ts",
+    "test:bash": "tsx scripts/test-bash-execution.ts",
+    "test:e2b": "tsx scripts/test-e2b-execution.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.9.1",

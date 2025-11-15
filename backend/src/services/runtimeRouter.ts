@@ -268,12 +268,17 @@ export class RuntimeRouter {
         );
 
       case 'wasmedge':
-        // TODO: Implement WasmEdge runtime
-        // For now, fallback to default
-        return await this.executeWithRuntime(
-          config.language === 'javascript' || config.language === 'typescript' ? 'vm2' : 'subprocess',
-          config
-        );
+        // Import WasmEdge runtime
+        const { wasmEdgeRuntime } = await import('./runtimes/wasmEdgeRuntime');
+        if (wasmEdgeRuntime.checkAvailability()) {
+          return await wasmEdgeRuntime.execute(config.code, config.language, config.input, config.timeout || 5000);
+        } else {
+          // Fallback to default if WasmEdge not available
+          return await this.executeWithRuntime(
+            config.language === 'javascript' || config.language === 'typescript' ? 'vm2' : 'subprocess',
+            config
+          );
+        }
 
       case 'bacalhau':
         // TODO: Implement Bacalhau runtime
