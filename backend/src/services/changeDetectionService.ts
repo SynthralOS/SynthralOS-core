@@ -3,6 +3,7 @@ import { changeDetection } from '../../drizzle/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { scraperService } from './scraperService';
+import { browserAutomationService } from './browserAutomationService';
 import crypto from 'crypto';
 
 /**
@@ -141,15 +142,61 @@ export class ChangeDetectionService {
       }
 
       // Fetch current content
-      const scrapeResult = await scraperService.scrape({
-        url: monitor.url,
-        selectors: monitor.selector
-          ? {
-              monitored: monitor.selector,
-            }
-          : undefined,
-        extractHtml: true,
-      });
+      // Try browser automation first if selector requires interaction or JS rendering
+      let scrapeResult;
+      const needsBrowser = monitor.selector && (
+        monitor.selector.includes('button') ||
+        monitor.selector.includes('click') ||
+        monitor.selector.includes('form')
+      );
+
+      if (needsBrowser) {
+        // Use browser automation for interactive elements
+        const browserResult = await browserAutomationService.executeAction({
+          action: 'extract',
+          url: monitor.url,
+          extractSelectors: monitor.selector
+            ? {
+                monitored: monitor.selector,
+              }
+            : undefined,
+          context: {
+            organizationId: monitor.organizationId || undefined,
+            workspaceId: monitor.workspaceId || undefined,
+            userId: monitor.userId || undefined,
+          },
+        });
+
+        if (browserResult.success) {
+          scrapeResult = {
+            success: true,
+            data: browserResult.data,
+            html: browserResult.html || '',
+          };
+        } else {
+          // Fallback to scraper
+          scrapeResult = await scraperService.scrape({
+            url: monitor.url,
+            selectors: monitor.selector
+              ? {
+                  monitored: monitor.selector,
+                }
+              : undefined,
+            extractHtml: true,
+          });
+        }
+      } else {
+        // Use scraper for static content
+        scrapeResult = await scraperService.scrape({
+          url: monitor.url,
+          selectors: monitor.selector
+            ? {
+                monitored: monitor.selector,
+              }
+            : undefined,
+          extractHtml: true,
+        });
+      }
 
       if (!scrapeResult.success) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Failed to fetch content' });
