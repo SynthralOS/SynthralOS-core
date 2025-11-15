@@ -95,31 +95,25 @@ export class WasmEdgeRuntime {
         return {
           success: false,
           error: {
-            message: 'WasmEdge runtime is not available. Set WASMEDGE_SERVICE_URL or WASMEDGE_ENABLED=true.',
+            message: 'WasmEdge runtime is not available. Install WasmEdge or set WASMEDGE_ENABLED=true and WASMEDGE_PATH.',
             code: 'WASMEDGE_NOT_AVAILABLE',
-          },
-        };
-      }
-
-      if (!this.httpService) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: 'WasmEdge HTTP service not configured',
-        });
-        return {
-          success: false,
-          error: {
-            message: 'WasmEdge HTTP service URL is required. Set WASMEDGE_SERVICE_URL environment variable.',
-            code: 'WASMEDGE_SERVICE_NOT_CONFIGURED',
+            details: {
+              note: 'To use WasmEdge:',
+              steps: [
+                '1. Install WasmEdge: curl -sSf https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/install.sh | bash',
+                '2. Set WASMEDGE_ENABLED=true',
+                '3. Optionally set WASMEDGE_PATH to wasmedge binary location',
+              ],
+            },
           },
         };
       }
 
       // Compile code to WASM
-      let wasmBase64: string;
+      let wasmBinary: Buffer;
       try {
         const compilationResult = await wasmCompiler.compile(code, language);
-        wasmBase64 = compilationResult.wasmBase64;
+        wasmBinary = compilationResult.wasmBinary;
         
         span.setAttributes({
           'wasmedge.compilation_time_ms': compilationResult.compilationTime,
@@ -145,58 +139,112 @@ export class WasmEdgeRuntime {
         };
       }
 
-      // Execute WASM via HTTP service
-      const executeTimeout = Math.min(timeout, this.timeout);
-      const httpResult = await this.httpService.execute({
-        wasm: wasmBase64,
-        input,
-        functionName: 'main', // Default function name
-        memoryLimit: this.memoryLimit,
-        timeout: executeTimeout,
-      });
+      // Execute WASM using wasmedge CLI
+      // Note: This is a simplified approach. For production, consider using:
+      // 1. wasmedge-extensions npm package (if available)
+      // 2. Node.js bindings for WasmEdge SDK
+      // 3. HTTP service (if preferred)
+      
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const { writeFile, unlink } = await import('fs/promises');
+      const { join } = await import('path');
+      const { createId } = await import('@paralleldrive/cuid2');
+      const execAsync = promisify(exec);
 
-      const totalTime = Date.now() - startTime;
+      const tempDir = join(process.cwd(), '.wasm-temp');
+      const wasmFile = join(tempDir, `${createId()}.wasm`);
+      const inputFile = join(tempDir, `${createId()}.json`);
 
-      if (!httpResult.success) {
+      try {
+        // Ensure temp directory exists
+        const { mkdir } = await import('fs/promises');
+        await mkdir(tempDir, { recursive: true }).catch(() => {});
+
+        // Write WASM binary to file
+        await writeFile(wasmFile, wasmBinary);
+
+        // Write input to JSON file
+        await writeFile(inputFile, JSON.stringify(input));
+
+        // Execute WASM using wasmedge CLI
+        // Note: This assumes the WASM module has a main function that reads from stdin
+        const executeTimeout = Math.min(timeout, this.timeout);
+        const command = `${this.wasmEdgePath} ${wasmFile}`;
+        
+        const result = await Promise.race([
+          execAsync(command, {
+            timeout: executeTimeout,
+            maxBuffer: this.memoryLimit,
+          }),
+          new Promise<{ stdout: string; stderr: string }>((_, reject) =>
+            setTimeout(() => reject(new Error(`WasmEdge execution timed out after ${executeTimeout}ms`)), executeTimeout)
+          ),
+        ]);
+
+        // Parse output
+        let output: any;
+        try {
+          const stdout = result.stdout.trim();
+          if (stdout) {
+            output = JSON.parse(stdout);
+          } else {
+            output = input; // Return input if no output
+          }
+        } catch {
+          // If JSON parsing fails, return raw stdout
+          output = result.stdout.trim() || input;
+        }
+
+        const totalTime = Date.now() - startTime;
+
+        span.setAttributes({
+          'wasmedge.success': true,
+          'wasmedge.execution_time_ms': totalTime,
+        });
+        span.setStatus({ code: SpanStatusCode.OK });
+
+        return {
+          success: true,
+          output: {
+            output: output !== undefined ? output : input,
+          },
+          metadata: {
+            executionTime: totalTime,
+          },
+        };
+      } catch (execError: any) {
+        const totalTime = Date.now() - startTime;
+        
+        span.recordException(execError);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: httpResult.error || 'WasmEdge execution failed',
+          message: execError.message || 'WasmEdge execution failed',
         });
 
         return {
           success: false,
           error: {
-            message: httpResult.error || 'WasmEdge execution failed',
-            code: 'WASMEDGE_EXECUTION_ERROR',
+            message: execError.message || 'WasmEdge execution failed',
+            code: execError.message?.includes('timed out') ? 'WASMEDGE_TIMEOUT' : 'WASMEDGE_EXECUTION_ERROR',
             details: {
-              executionTime: httpResult.executionTime,
-              memoryUsed: httpResult.memoryUsed,
+              stderr: execError.stderr,
+              stdout: execError.stdout,
             },
           },
           metadata: {
             executionTime: totalTime,
-            memoryUsed: httpResult.memoryUsed,
           },
         };
+      } finally {
+        // Cleanup temp files
+        try {
+          await unlink(wasmFile).catch(() => {});
+          await unlink(inputFile).catch(() => {});
+        } catch {
+          // Ignore cleanup errors
+        }
       }
-
-      span.setAttributes({
-        'wasmedge.success': true,
-        'wasmedge.execution_time_ms': httpResult.executionTime || totalTime,
-        'wasmedge.memory_used': httpResult.memoryUsed || 0,
-      });
-      span.setStatus({ code: SpanStatusCode.OK });
-
-      return {
-        success: true,
-        output: {
-          output: httpResult.output !== undefined ? httpResult.output : input,
-        },
-        metadata: {
-          executionTime: httpResult.executionTime || totalTime,
-          memoryUsed: httpResult.memoryUsed,
-        },
-      };
     } catch (error: any) {
       span.recordException(error);
       span.setStatus({
@@ -227,4 +275,7 @@ export class WasmEdgeRuntime {
 }
 
 export const wasmEdgeRuntime = new WasmEdgeRuntime();
+
+// Initialize availability check
+wasmEdgeRuntime.checkAvailability();
 

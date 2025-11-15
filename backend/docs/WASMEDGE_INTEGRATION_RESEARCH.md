@@ -38,29 +38,29 @@ WasmEdge is a lightweight, high-performance WebAssembly runtime designed for clo
 - Rust SDK: https://wasmedge.github.io/WasmEdge/wasmedge_sdk/
 - C API: https://wasmedge.org/docs/embed/c/
 
-### Option 2: HTTP Service/API
+### Option 2: CLI Execution (Current Implementation)
 
-**Description:** Run WasmEdge as a separate HTTP service and communicate via REST API.
+**Description:** Use WasmEdge CLI binary directly via child process execution.
 
 **Pros:**
-- ✅ Language-agnostic (any language can call HTTP)
-- ✅ Easy to scale independently
-- ✅ Can use Docker/Kubernetes
-- ✅ Simpler integration (just HTTP calls)
+- ✅ No external service required
+- ✅ Simple implementation
+- ✅ Direct execution
+- ✅ No network overhead
 
 **Cons:**
-- ❌ Network latency overhead
-- ❌ Requires separate service deployment
-- ❌ More infrastructure to manage
+- ❌ Requires WasmEdge binary installed on system
+- ❌ Process spawning overhead
+- ❌ Limited input/output handling
 
 **Implementation:**
-- Deploy WasmEdge as HTTP service (custom or use existing)
-- Use HTTP client to send WASM binaries and execute
-- Similar pattern to E2B runtime
+- Check for wasmedge binary in PATH
+- Compile code to WASM
+- Execute via child process
+- Parse output
 
 **Resources:**
-- WasmEdge can be wrapped in HTTP service
-- Example: https://github.com/second-state/wasmedge-containers-examples
+- WasmEdge CLI: https://wasmedge.org/docs/start/install/
 
 ### Option 3: Docker Container
 
@@ -269,46 +269,41 @@ pub fn execute_wasm(wasm_bytes: Vec<u8>, input: String) -> String {
 
 ## 4. Recommended Approach for SynthralOS
 
-### Phase 1: HTTP Service Approach (Quick Start)
+### Phase 1: CLI Execution Approach (Current Implementation)
 
 **Rationale:**
-- Similar to existing E2B runtime pattern
-- Easy to implement and test
-- Can be replaced later with embedded SDK
-- No native bindings required
+- No external service required
+- Simple to implement
+- Direct execution via wasmedge binary
+- Can be upgraded to embedded SDK later
 
 **Implementation Steps:**
 
-1. **Set up WasmEdge HTTP Service**
+1. **Install WasmEdge Binary**
    ```bash
-   # Option A: Use existing WasmEdge HTTP wrapper
-   # Option B: Create custom HTTP service using WasmEdge SDK
+   curl -sSf https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/install.sh | bash
    ```
 
-2. **Create HTTP Client in TypeScript**
+2. **Create CLI Execution in TypeScript**
    ```typescript
-   // Similar to e2bRuntime.ts
    async execute(code: string, language: string, input: any) {
      // 1. Compile code to WASM
-     const wasmBinary = await this.compileToWasm(code, language);
+     const wasmBinary = await wasmCompiler.compile(code, language);
      
-     // 2. Send to WasmEdge HTTP service
-     const response = await fetch(`${this.serviceUrl}/execute`, {
-       method: 'POST',
-       body: JSON.stringify({
-         wasm: wasmBinary.toString('base64'),
-         input: input,
-       }),
-     });
+     // 2. Write WASM to temp file
+     const wasmFile = await writeTempFile(wasmBinary);
      
-     // 3. Return result
-     return await response.json();
+     // 3. Execute via wasmedge CLI
+     const result = await execAsync(`wasmedge ${wasmFile}`);
+     
+     // 4. Parse and return result
+     return JSON.parse(result.stdout);
    }
    ```
 
 3. **WASM Compilation Pipeline**
    - JavaScript/TypeScript → AssemblyScript → WASM
-   - Python → Pyodide → WASM
+   - Python → Pyodide → WASM (placeholder)
    - Rust → wasm-pack → WASM
    - Go → TinyGo → WASM
 
@@ -373,27 +368,21 @@ pub fn execute_wasm(wasm_bytes: Vec<u8>, input: String) -> String {
    - Call before execution
    - Cache compiled WASM binaries
 
-### Step 2: WasmEdge HTTP Service
+### Step 2: WasmEdge CLI Integration
 
 **Priority:** High  
-**Estimated Time:** 1-2 days
+**Estimated Time:** 1 day
 
-1. **Option A: Use Existing Service**
-   - Research existing WasmEdge HTTP wrappers
-   - Deploy as Docker container
-
-2. **Option B: Create Custom Service**
-   ```rust
-   // wasmedge-service/src/main.rs
-   use wasmedge_sdk::*;
-   use actix_web::{web, App, HttpServer, Responder};
-   
-   async fn execute_wasm(req: web::Json<ExecuteRequest>) -> impl Responder {
-       // Load WASM module
-       // Execute with input
-       // Return result
-   }
+1. **Install WasmEdge Binary**
+   ```bash
+   curl -sSf https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/install.sh | bash
    ```
+
+2. **Implement CLI Execution**
+   - Check for wasmedge binary availability
+   - Write WASM to temp file
+   - Execute via child process
+   - Parse output and cleanup
 
 ### Step 3: Integration with Runtime Router
 
@@ -430,7 +419,7 @@ pub fn execute_wasm(wasm_bytes: Vec<u8>, input: String) -> String {
 ```env
 # WasmEdge Configuration
 WASMEDGE_ENABLED=true
-WASMEDGE_SERVICE_URL=http://localhost:8080
+WASMEDGE_PATH=wasmedge  # Path to wasmedge binary (default: 'wasmedge')
 WASMEDGE_TIMEOUT=30000
 WASMEDGE_MEMORY_LIMIT=134217728  # 128MB
 
@@ -438,6 +427,7 @@ WASMEDGE_MEMORY_LIMIT=134217728  # 128MB
 WASM_COMPILER_ENABLED=true
 WASM_CACHE_ENABLED=true
 WASM_CACHE_TTL=3600  # 1 hour
+WASM_CACHE_DIR=.wasm-cache  # Cache directory
 ```
 
 ---
