@@ -159,9 +159,9 @@
 ## Phase 7: Security & Compliance (Ongoing)
 
 ### 7.1 Security Enhancements
-- [ ] **7.1.1** Implement namespace isolation for runtimes
-- [ ] **7.1.2** Add read-only filesystem option
-- [ ] **7.1.3** Add outbound network toggle per node
+- [x] **7.1.1** Implement namespace isolation for runtimes ✅ (organization-based namespace)
+- [x] **7.1.2** Add read-only filesystem option ✅ (configurable per node)
+- [x] **7.1.3** Add outbound network toggle per node ✅ (configurable per node with host whitelist)
 - [ ] **7.1.4** Implement sandbox escape detection (if using Kubernetes)
 - [ ] **7.1.5** Add code review integration (CodeRabbit/Cursor) - optional
 
