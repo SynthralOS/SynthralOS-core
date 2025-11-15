@@ -307,33 +307,33 @@ async function executeConnectorAction(
       }
 
       case 'trello': {
-        // Trello executor - placeholder for future implementation
-        return {
-          success: false,
-          error: {
-            message: `Trello executor not yet fully implemented for action: ${actionId}`,
-            code: 'ACTION_NOT_IMPLEMENTED',
-            metadata: {
-              connectorId,
-              actionId,
-            },
-          },
-        };
+        const { executeTrello } = await import('./connectors/trello');
+        return executeTrello(actionId, input, credentials as any);
       }
 
       case 'asana': {
-        // Asana executor - placeholder for future implementation
-        return {
-          success: false,
-          error: {
-            message: `Asana executor not yet fully implemented for action: ${actionId}`,
-            code: 'ACTION_NOT_IMPLEMENTED',
-            metadata: {
-              connectorId,
-              actionId,
-            },
-          },
-        };
+        const { executeAsana } = await import('./connectors/asana');
+        return executeAsana(actionId, input, credentials as any);
+      }
+
+      case 'microsoft_teams': {
+        const { executeMicrosoftTeams } = await import('./connectors/microsoftTeams');
+        return executeMicrosoftTeams(actionId, input, credentials as any);
+      }
+
+      case 'discord': {
+        const { executeDiscord } = await import('./connectors/discord');
+        return executeDiscord(actionId, input, credentials as any);
+      }
+
+      case 'stripe': {
+        const { executeStripe } = await import('./connectors/stripe');
+        return executeStripe(actionId, input, credentials as any);
+      }
+
+      case 'shopify': {
+        const { executeShopify } = await import('./connectors/shopify');
+        return executeShopify(actionId, input, credentials as any);
       }
 
       case 'slack': {
