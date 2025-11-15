@@ -40,6 +40,7 @@ import { executeOCR } from './ocr';
 import { executeHumanPrompt } from './humanPrompt';
 import { executeWebScrape } from './webScrape';
 import { executeBrowserAutomation } from './browserAutomation';
+import { executeBrowserSwitch } from './browserSwitch';
 
 export async function executeNode(context: NodeExecutionContext): Promise<NodeExecutionResult> {
   const { nodeId, config } = context;
@@ -73,6 +74,8 @@ export async function executeNode(context: NodeExecutionContext): Promise<NodeEx
       result = await executeWebScrape(context);
     } else if (nodeType === 'action.browser_automation') {
       result = await executeBrowserAutomation(context);
+    } else if (nodeType === 'action.browser_switch') {
+      result = await executeBrowserSwitch(context);
     } else if (nodeType === 'ai.llm') {
       result = await executeLLM(context);
     } else if (nodeType === 'ai.embedding') {
