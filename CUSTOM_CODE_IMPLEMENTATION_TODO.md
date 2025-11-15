@@ -1,8 +1,8 @@
 # Custom Code & Code Agents - Implementation TODO
 
-**Status:** 🟢 In Progress - 92% Complete  
+**Status:** 🟢 In Progress - 96% Complete  
 **Last Updated:** 2024-12-19  
-**Progress:** 45/49 core tasks completed
+**Progress:** 47/49 core tasks completed
 
 ---
 
@@ -145,7 +145,7 @@
 - [x] **6.1.3** Add token usage tracking for AI-assisted code
 - [x] **6.1.4** Create `code_exec_logs` table migration
 - [x] **6.1.5** Log all code executions to database (partially done via runtimeRouter)
-- [ ] **6.1.6** Add code execution metrics to dashboard
+- [x] **6.1.6** Add code execution metrics to dashboard
 
 ### 6.2 Analytics & Reporting
 - [x] **6.2.1** Add PostHog events for code tool usage
@@ -214,7 +214,7 @@ PYTHON_SERVICE_URL=...
 
 ### Unit Tests
 - [x] Code validation service tests
-- [ ] Runtime router tests
+- [x] Runtime router tests
 - [x] Code agent registry tests
 - [x] Schema validation tests
 
