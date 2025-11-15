@@ -44,6 +44,8 @@ export default function SandboxStudio() {
   const [inputSchema, setInputSchema] = useState<any>(null);
   const [outputSchema, setOutputSchema] = useState<any>(null);
   const [isPublic, setIsPublic] = useState(false);
+  const [license, setLicense] = useState<string>('');
+  const [scope, setScope] = useState<string>('private');
   const [showLogs, setShowLogs] = useState(false);
   const [selectedAgentForLogs, setSelectedAgentForLogs] = useState<string | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -170,6 +172,10 @@ export default function SandboxStudio() {
       setInputSchema(selectedAgent.inputSchema);
       setOutputSchema(selectedAgent.outputSchema);
       setIsPublic(selectedAgent.isPublic);
+      // Load license and scope from metadata
+      const metadata = (selectedAgent as any).metadata || {};
+      setLicense(metadata.license || '');
+      setScope(metadata.scope || 'private');
     }
   }, [selectedAgent]);
 
@@ -185,6 +191,8 @@ export default function SandboxStudio() {
     setInputSchema(null);
     setOutputSchema(null);
     setIsPublic(false);
+    setLicense('');
+    setScope('private');
     setSelectedAgent(null);
   };
 
@@ -543,6 +551,47 @@ export default function SandboxStudio() {
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* License & Scope */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    License
+                  </label>
+                  <select
+                    value={license}
+                    onChange={(e) => setLicense(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 text-sm"
+                  >
+                    <option value="">No License</option>
+                    <option value="MIT">MIT</option>
+                    <option value="Apache-2.0">Apache 2.0</option>
+                    <option value="GPL-3.0">GPL 3.0</option>
+                    <option value="BSD-3-Clause">BSD 3-Clause</option>
+                    <option value="Proprietary">Proprietary</option>
+                    <option value="Custom">Custom</option>
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    License for this code agent
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Scope
+                  </label>
+                  <select
+                    value={scope}
+                    onChange={(e) => setScope(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 text-sm"
+                  >
+                    <option value="private">Private (Organization Only)</option>
+                    <option value="workspace">Workspace</option>
+                    <option value="public">Public (All Users)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Visibility scope for this agent
+                  </p>
                 </div>
 
                 {/* Public/Private & Publish/Unpublish */}

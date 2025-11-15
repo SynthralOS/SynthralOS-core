@@ -42,6 +42,13 @@ export default function CodeAgentAnalytics() {
     executionsByLanguage: {},
     executionsByRuntime: {},
     executionsOverTime: [],
+    latencyP50: 0,
+    latencyP95: 0,
+    latencyP99: 0,
+    validationFailureRate: 0,
+    validationAttempts: 0,
+    validationFailures: 0,
+    registryReuseRate: undefined,
   };
 
   const executionsByLanguage = stats.executionsByLanguage || {};
@@ -263,6 +270,94 @@ export default function CodeAgentAnalytics() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Latency Metrics */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                Latency Metrics
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">P50 Latency</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {stats.latencyP50 > 0 ? `${(stats.latencyP50 / 1000).toFixed(2)}s` : 'N/A'}
+                  </div>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">P95 Latency</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {stats.latencyP95 > 0 ? `${(stats.latencyP95 / 1000).toFixed(2)}s` : 'N/A'}
+                  </div>
+                </div>
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">P99 Latency</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {stats.latencyP99 > 0 ? `${(stats.latencyP99 / 1000).toFixed(2)}s` : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Validation & Registry Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Validation Failure Rate */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                  Validation Metrics
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-gray-700 dark:text-gray-300">Validation Failure Rate</span>
+                      <span className="text-gray-600 dark:text-gray-400">
+                        {((stats.validationFailureRate || 0) * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          (stats.validationFailureRate || 0) < 0.1 ? 'bg-green-500' :
+                          (stats.validationFailureRate || 0) < 0.3 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min((stats.validationFailureRate || 0) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <div>Total Validation Attempts: {stats.validationAttempts || 0}</div>
+                    <div>Validation Failures: {stats.validationFailures || 0}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Registry Reuse Rate */}
+              {stats.registryReuseRate !== undefined && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                    Registry Reuse Rate
+                  </h2>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-gray-700 dark:text-gray-300">Agent Reuse Rate</span>
+                        <span className="text-gray-600 dark:text-gray-400">
+                          {((stats.registryReuseRate || 0) * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div
+                          className="bg-blue-500 h-2 rounded-full"
+                          style={{ width: `${Math.min((stats.registryReuseRate || 0) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Percentage of code executions using this agent from the registry
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Executions Over Time */}

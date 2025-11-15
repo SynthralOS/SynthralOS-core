@@ -246,6 +246,31 @@ router.get('/analytics', authenticate, setOrganization, async (req: AuthRequest,
     const totalTokensUsed = logs.reduce((sum, l) => sum + (l.tokensUsed || 0), 0);
     const totalMemory = logs.reduce((sum, l) => sum + (l.memoryMb || 0), 0);
     const avgMemoryMb = totalExecutions > 0 ? totalMemory / totalExecutions : 0;
+    
+    // Calculate latency percentiles
+    const durations = logs.map(l => l.durationMs || 0).filter(d => d > 0).sort((a, b) => a - b);
+    const p50 = durations.length > 0 ? durations[Math.floor(durations.length * 0.5)] : 0;
+    const p95 = durations.length > 0 ? durations[Math.floor(durations.length * 0.95)] : 0;
+    const p99 = durations.length > 0 ? durations[Math.floor(durations.length * 0.99)] : 0;
+    
+    // Calculate validation failure rate
+    const validationAttempts = logs.filter(l => l.validationPassed !== null).length;
+    const validationFailures = logs.filter(l => l.validationPassed === false).length;
+    const validationFailureRate = validationAttempts > 0 ? validationFailures / validationAttempts : 0;
+    
+    // Calculate registry reuse rate (if agentId is provided)
+    let registryReuseRate = 0;
+    if (agentId) {
+      // Get total code executions in organization (all time, not just filtered time range)
+      const allLogs = await db
+        .select()
+        .from(codeExecLogs)
+        .where(eq(codeExecLogs.organizationId, req.organizationId!));
+      
+      const totalCodeExecutions = allLogs.length;
+      const agentExecutions = allLogs.filter(l => l.codeAgentId === agentId).length;
+      registryReuseRate = totalCodeExecutions > 0 ? agentExecutions / totalCodeExecutions : 0;
+    }
 
     // Group by language
     const executionsByLanguage: Record<string, number> = {};
@@ -289,6 +314,16 @@ router.get('/analytics', authenticate, setOrganization, async (req: AuthRequest,
         executionsByLanguage,
         executionsByRuntime,
         executionsOverTime,
+        // Latency metrics
+        latencyP50: p50,
+        latencyP95: p95,
+        latencyP99: p99,
+        // Validation metrics
+        validationFailureRate,
+        validationAttempts,
+        validationFailures,
+        // Registry reuse metrics
+        registryReuseRate: agentId ? registryReuseRate : undefined,
       },
     });
   } catch (error: any) {
