@@ -406,14 +406,6 @@ Query `browser_runs` table for:
 - ✅ Stealth middleware (user-agent rotation, canvas/WebGL spoofing, timezone/language spoofing)
 - ✅ AI Browser Agent (autonomous browser automation)
 - ✅ Browser automation tool registration
-- ⏳ browser-use.com integration (pending - lightweight library)
-- ⏳ Undetected-Chromedriver bridge (pending - Python bridge needed)
-- ⏳ Cloudscraper bridge (pending - Python bridge needed)
-
-### Phase 5: Scale & External Services
-- [ ] Browserbase integration
-- [ ] Stagehand integration
-- [ ] Fleet-scale browser orchestration
 
 ### ✅ Phase 5: RAG Helper Clicker & Change Detection (COMPLETE)
 - ✅ RAG Helper Clicker service (LangGraph sub-flow)
@@ -424,6 +416,11 @@ Query `browser_runs` table for:
 - [ ] browser-use.com integration (lightweight library)
 - [ ] Undetected-Chromedriver bridge (Python subprocess)
 - [ ] Cloudscraper bridge (Python subprocess)
+
+### Phase 7: Scale & External Services
+- [ ] Browserbase integration
+- [ ] Stagehand integration
+- [ ] Fleet-scale browser orchestration
 
 ---
 
