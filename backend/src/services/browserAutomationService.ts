@@ -605,6 +605,100 @@ export class BrowserAutomationService {
   }
 
   /**
+   * Execute action using Cloudscraper bridge
+   */
+  private async executeCloudscraperAction(
+    config: BrowserActionConfig,
+    routingDecision: any
+  ): Promise<BrowserActionResult> {
+    if (!config.url) {
+      throw new Error('URL is required for Cloudscraper');
+    }
+
+    const result = await cloudscraperBridge.execute({
+      url: config.url,
+      extractSelectors: config.extractSelectors,
+      proxy: routingDecision.config.proxy?.server,
+      userAgent: routingDecision.config.userAgent,
+    });
+
+    if (result.success) {
+      return {
+        success: true,
+        action: config.action,
+        data: result.data,
+        html: result.html,
+        metadata: {
+          engine: 'cloudscraper',
+          latency: result.metadata.executionTime,
+          url: config.url,
+        },
+      };
+    } else {
+      return {
+        success: false,
+        action: config.action,
+        error: result.error || 'Cloudscraper execution failed',
+        metadata: {
+          engine: 'cloudscraper',
+          latency: result.metadata.executionTime,
+          url: config.url,
+        },
+      };
+    }
+  }
+
+  /**
+   * Execute action using Undetected-Chromedriver bridge
+   */
+  private async executeUndetectedChromeDriverAction(
+    config: BrowserActionConfig,
+    routingDecision: any
+  ): Promise<BrowserActionResult> {
+    if (!config.url) {
+      throw new Error('URL is required for Undetected-Chromedriver');
+    }
+
+    const result = await undetectedChromeDriverBridge.execute({
+      url: config.url,
+      action: config.action === 'extract' ? 'extract' : 'navigate',
+      selector: config.selector,
+      extractSelectors: config.extractSelectors,
+      waitForSelector: config.waitForSelector,
+      waitTimeout: config.waitTimeout,
+      headless: routingDecision.config.headless !== false,
+      userAgent: routingDecision.config.userAgent,
+      proxy: routingDecision.config.proxy?.server,
+    });
+
+    if (result.success) {
+      return {
+        success: true,
+        action: config.action,
+        data: result.data,
+        screenshot: result.screenshot,
+        html: result.html,
+        metadata: {
+          engine: 'undetected-chromedriver',
+          latency: result.metadata.executionTime,
+          url: config.url,
+        },
+      };
+    } else {
+      return {
+        success: false,
+        action: config.action,
+        error: result.error || 'Undetected-Chromedriver execution failed',
+        metadata: {
+          engine: 'undetected-chromedriver',
+          latency: result.metadata.executionTime,
+          url: config.url,
+        },
+      };
+    }
+  }
+
+  /**
    * Log browser run to database
    */
   private async logBrowserRun(event: {
