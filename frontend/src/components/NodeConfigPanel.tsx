@@ -248,6 +248,77 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
             </div>
           );
         }
+        
+        // Schema editor for input/output schemas
+        if (property.format === 'schema') {
+          const schemaValue = typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2);
+          const isInputSchema = key === 'inputSchema';
+          const nodeType = node?.data?.type as string;
+          const defaultSchema = isInputSchema
+            ? {
+                type: 'object',
+                properties: {
+                  input: { type: 'any' },
+                },
+              }
+            : {
+                type: 'object',
+                properties: {
+                  output: { type: 'any' },
+                },
+              };
+          
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {isInputSchema ? 'Input Schema' : 'Output Schema'} (JSON)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      const parsed = JSON.parse(schemaValue);
+                      handleChange(key, parsed);
+                    } catch {
+                      // Invalid JSON, use default
+                      handleChange(key, defaultSchema);
+                    }
+                  }}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Reset to Default
+                </button>
+              </div>
+              <CodeEditor
+                language="json"
+                value={schemaValue}
+                onChange={(val) => {
+                  try {
+                    const parsed = JSON.parse(val);
+                    handleChange(key, parsed);
+                  } catch {
+                    // Invalid JSON, store as string for now
+                    handleChange(key, val);
+                  }
+                }}
+                height="200px"
+                placeholder={JSON.stringify(defaultSchema, null, 2)}
+              />
+              <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className="mt-0.5">💡</span>
+                <div>
+                  <p className="mb-1">
+                    {nodeType === 'action.code.python'
+                      ? 'Pydantic schema format (e.g., {"type": "object", "properties": {...}})'
+                      : 'Zod schema format (e.g., {"type": "object", "properties": {...}})'}
+                  </p>
+                  <p>Schema will be used to validate input/output before/after code execution.</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
         return (
           <textarea
             value={value as string}

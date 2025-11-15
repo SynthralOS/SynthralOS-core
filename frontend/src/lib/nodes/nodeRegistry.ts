@@ -454,6 +454,22 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           default: '// Your code here\nreturn input;',
           format: 'code',
         },
+        inputSchema: {
+          type: 'object',
+          description: 'Input schema for validation (Zod schema as JSON)',
+          format: 'schema',
+        },
+        outputSchema: {
+          type: 'object',
+          description: 'Output schema for validation (Zod schema as JSON)',
+          format: 'schema',
+        },
+        validationType: {
+          type: 'string',
+          description: 'Validation type',
+          enum: ['zod', 'pydantic'],
+          default: 'zod',
+        },
       },
       required: ['code'],
     },
@@ -486,6 +502,22 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           description: 'Python packages to install (e.g., ["pandas", "numpy"]). One package per line.',
           default: [],
           format: 'packages',
+        },
+        inputSchema: {
+          type: 'object',
+          description: 'Input schema for validation (Pydantic schema as JSON)',
+          format: 'schema',
+        },
+        outputSchema: {
+          type: 'object',
+          description: 'Output schema for validation (Pydantic schema as JSON)',
+          format: 'schema',
+        },
+        validationType: {
+          type: 'string',
+          description: 'Validation type',
+          enum: ['zod', 'pydantic'],
+          default: 'pydantic',
         },
         timeout: {
           type: 'number',
@@ -596,6 +628,22 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           default: '#!/bin/bash\n# Your code here\necho "Hello from Bash"',
           format: 'code',
           language: 'bash',
+        },
+        inputSchema: {
+          type: 'object',
+          description: 'Input schema for validation (Zod schema as JSON)',
+          format: 'schema',
+        },
+        outputSchema: {
+          type: 'object',
+          description: 'Output schema for validation (Zod schema as JSON)',
+          format: 'schema',
+        },
+        validationType: {
+          type: 'string',
+          description: 'Validation type',
+          enum: ['zod', 'pydantic'],
+          default: 'zod',
         },
         timeout: {
           type: 'number',
