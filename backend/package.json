@@ -21,7 +21,8 @@
     "test:wasmedge": "tsx scripts/test-wasmedge-execution.ts",
     "test:bacalhau": "tsx scripts/test-bacalhau-execution.ts",
     "test:etl-hooks": "tsx scripts/test-etl-hooks.ts",
-    "test:agent-code": "tsx scripts/test-agent-code-execution.ts"
+    "test:agent-code": "tsx scripts/test-agent-code-execution.ts",
+    "test:api-endpoints": "tsx scripts/test-api-endpoints.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.9.1",

@@ -12,7 +12,83 @@ const router = Router();
 // Apply audit logging to all routes (except the audit log routes themselves to avoid recursion)
 // Note: We'll apply it selectively to avoid infinite loops
 
-// Get all audit logs with filtering and pagination
+/**
+ * @swagger
+ * /audit-logs:
+ *   get:
+ *     summary: Get all audit logs with filtering and pagination
+ *     tags: [Audit Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter logs from this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter logs until this date
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Filter by action (partial match)
+ *       - in: query
+ *         name: resourceType
+ *         schema:
+ *           type: string
+ *         description: Filter by resource type
+ *       - in: query
+ *         name: resourceId
+ *         schema:
+ *           type: string
+ *         description: Filter by resource ID
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: Filter by user ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search in action, resourceType, and resourceId
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of logs to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of logs to skip
+ *     responses:
+ *       200:
+ *         description: List of audit logs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 logs:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/AuditLog'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
 router.get('/', authenticate, setOrganization, async (req: AuthRequest, res) => {
   try {
     if (!req.user || !req.organizationId) {
@@ -114,7 +190,71 @@ router.get('/', authenticate, setOrganization, async (req: AuthRequest, res) => 
   }
 });
 
-// Export audit logs as CSV (must come before /:id route)
+/**
+ * @swagger
+ * /audit-logs/export/csv:
+ *   get:
+ *     summary: Export audit logs as CSV
+ *     tags: [Audit Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter logs from this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter logs until this date
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *         description: Filter by action
+ *       - in: query
+ *         name: resourceType
+ *         schema:
+ *           type: string
+ *         description: Filter by resource type
+ *       - in: query
+ *         name: resourceId
+ *         schema:
+ *           type: string
+ *         description: Filter by resource ID
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: Filter by user ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search query
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10000
+ *         description: Maximum number of logs to export
+ *     responses:
+ *       200:
+ *         description: CSV file download
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
 router.get('/export/csv', authenticate, setOrganization, async (req: AuthRequest, res) => {
   try {
     if (!req.user || !req.organizationId) {
@@ -229,7 +369,35 @@ router.get('/export/csv', authenticate, setOrganization, async (req: AuthRequest
   }
 });
 
-// Get a specific audit log by ID
+/**
+ * @swagger
+ * /audit-logs/{id}:
+ *   get:
+ *     summary: Get a specific audit log by ID
+ *     tags: [Audit Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Audit log ID
+ *     responses:
+ *       200:
+ *         description: Audit log details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuditLog'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
 router.get('/:id', authenticate, setOrganization, async (req: AuthRequest, res) => {
   try {
     if (!req.user || !req.organizationId) {

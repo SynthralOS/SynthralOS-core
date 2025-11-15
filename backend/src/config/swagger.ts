@@ -6,7 +6,43 @@ const options: swaggerJsdoc.Options = {
     info: {
       title: 'SynthralOS Automation Platform API',
       version: '1.0.0',
-      description: 'API documentation for SynthralOS Automation Platform - A comprehensive workflow automation and orchestration platform',
+      description: `
+# SynthralOS Automation Platform API
+
+A comprehensive workflow automation and orchestration platform API.
+
+## Features
+
+- **Workflow Management**: Create, manage, and execute workflows
+- **Code Agents**: Execute custom code in secure sandboxes
+- **Analytics**: Track performance, costs, and usage metrics
+- **Monitoring**: Monitor email triggers, performance, and OSINT sources
+- **Team Management**: Manage teams, roles, and permissions
+- **Audit Logging**: Track all system activities with detailed audit logs
+
+## Authentication
+
+All endpoints (except public ones) require Bearer token authentication. Include the token in the Authorization header:
+
+\`\`\`
+Authorization: Bearer <your-token>
+\`\`\`
+
+## Rate Limiting
+
+API requests are rate-limited per organization. Check response headers for rate limit information.
+
+## Error Handling
+
+All errors follow a consistent format:
+
+\`\`\`json
+{
+  "error": "Error message",
+  "details": "Optional additional details"
+}
+\`\`\`
+      `,
       contact: {
         name: 'API Support',
         email: 'support@sos-automation.com',
@@ -74,6 +110,64 @@ const options: swaggerJsdoc.Options = {
             isPublic: { type: 'boolean' },
             usageCount: { type: 'number' },
             tags: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        AuditLog: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            userId: { type: 'string', nullable: true },
+            userEmail: { type: 'string', nullable: true },
+            userName: { type: 'string', nullable: true },
+            organizationId: { type: 'string' },
+            action: { type: 'string' },
+            resourceType: { type: 'string' },
+            resourceId: { type: 'string', nullable: true },
+            details: { type: 'object', nullable: true },
+            ipAddress: { type: 'string', nullable: true },
+            userAgent: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        Pagination: {
+          type: 'object',
+          properties: {
+            total: { type: 'integer' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+            hasMore: { type: 'boolean' },
+          },
+        },
+      },
+      responses: {
+        UnauthorizedError: {
+          description: 'Authentication required',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/Error',
+              },
+            },
+          },
+        },
+        NotFoundError: {
+          description: 'Resource not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/Error',
+              },
+            },
+          },
+        },
+        InternalServerError: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/Error',
+              },
+            },
           },
         },
       },
