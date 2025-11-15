@@ -147,10 +147,16 @@ export class CodeAgentRegistry {
 
   /**
    * Get agent by ID (optionally specific version)
+   * Verifies tenant scoping to ensure users can only access agents in their organization/workspace
    */
   async getAgent(
     agentId: string,
-    version?: string
+    version?: string,
+    tenantContext?: {
+      organizationId?: string;
+      workspaceId?: string;
+      userId?: string;
+    }
   ): Promise<typeof codeAgents.$inferSelect | null> {
     const tracer = trace.getTracer('sos-code-agent-registry');
     const span = tracer.startSpan('codeAgentRegistry.getAgent', {
@@ -232,6 +238,35 @@ export class CodeAgentRegistry {
             code: codeFromStorage,
           };
         }
+      }
+
+      // Verify tenant scoping (if tenant context provided)
+      if (tenantContext) {
+        // Public agents are accessible to all
+        if (!agent.isPublic) {
+          // Private agents must match organization
+          if (tenantContext.organizationId && agent.organizationId !== tenantContext.organizationId) {
+            span.setAttributes({
+              'agent.tenant_check': 'failed',
+              'agent.required_org': agent.organizationId,
+              'agent.requested_org': tenantContext.organizationId,
+            });
+            span.setStatus({ code: SpanStatusCode.ERROR, message: 'Agent not accessible in this organization' });
+            return null;
+          }
+
+          // If workspace context provided, verify workspace match (optional - workspace-scoped agents)
+          if (tenantContext.workspaceId && agent.workspaceId && agent.workspaceId !== tenantContext.workspaceId) {
+            span.setAttributes({
+              'agent.tenant_check': 'failed',
+              'agent.required_workspace': agent.workspaceId,
+              'agent.requested_workspace': tenantContext.workspaceId,
+            });
+            span.setStatus({ code: SpanStatusCode.ERROR, message: 'Agent not accessible in this workspace' });
+            return null;
+          }
+        }
+        span.setAttributes({ 'agent.tenant_check': 'passed' });
       }
 
       span.setStatus({ code: SpanStatusCode.OK });

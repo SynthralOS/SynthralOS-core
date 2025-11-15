@@ -23,6 +23,11 @@ class Scheduler {
     cron.schedule('0 2 * * *', async () => {
       await this.cleanupRetentionPolicies();
     });
+
+    // Run audit log retention cleanup daily at 3 AM
+    cron.schedule('0 3 * * *', async () => {
+      await this.cleanupAuditLogs();
+    });
   }
 
   /**
@@ -47,6 +52,52 @@ class Scheduler {
       console.log('[Scheduler] Retention policy cleanup completed');
     } catch (err: any) {
       console.error('[Scheduler] Error during retention policy cleanup:', err);
+    }
+  }
+
+  /**
+   * Cleanup old audit logs (90-day retention)
+   * Runs daily to clean up code execution logs older than 90 days
+   */
+  async cleanupAuditLogs() {
+    try {
+      console.log('[Scheduler] Starting audit log retention cleanup...');
+      
+      const { auditLogRetentionService } = await import('./auditLogRetentionService');
+      
+      // Get all organizations
+      const orgs = await db.select().from(organizations);
+
+      let totalDeleted = 0;
+      for (const org of orgs) {
+        try {
+          const result = await auditLogRetentionService.cleanupOldLogs({
+            retentionDays: 90,
+            organizationId: org.id,
+            dryRun: false,
+          });
+          totalDeleted += result.deletedCount;
+          console.log(`[Scheduler] Cleaned up ${result.deletedCount} audit logs for org ${org.id}`);
+        } catch (err: any) {
+          console.error(`[Scheduler] Failed to cleanup audit logs for org ${org.id}:`, err);
+        }
+      }
+
+      // Also cleanup logs without organization (if any)
+      try {
+        const result = await auditLogRetentionService.cleanupOldLogs({
+          retentionDays: 90,
+          dryRun: false,
+        });
+        totalDeleted += result.deletedCount;
+        console.log(`[Scheduler] Cleaned up ${result.deletedCount} audit logs without organization`);
+      } catch (err: any) {
+        console.error('[Scheduler] Failed to cleanup audit logs without organization:', err);
+      }
+
+      console.log(`[Scheduler] Audit log retention cleanup completed. Total deleted: ${totalDeleted}`);
+    } catch (err: any) {
+      console.error('[Scheduler] Error during audit log retention cleanup:', err);
     }
   }
 
