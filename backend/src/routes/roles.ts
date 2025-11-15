@@ -216,9 +216,10 @@ router.post(
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const { memberId } = req.body;
+      const { memberId, organizationMemberId } = req.body;
+      const actualMemberId = memberId || organizationMemberId;
 
-      if (!memberId) {
+      if (!actualMemberId) {
         return res.status(400).json({ error: 'Member ID is required' });
       }
 
@@ -234,7 +235,7 @@ router.post(
         .from(organizationMembers)
         .where(
           and(
-            eq(organizationMembers.id, memberId),
+            eq(organizationMembers.id, actualMemberId),
             eq(organizationMembers.organizationId, req.organizationId)
           )
         )
@@ -248,7 +249,7 @@ router.post(
       await db
         .update(organizationMembers)
         .set({ roleId: role.id })
-        .where(eq(organizationMembers.id, memberId));
+        .where(eq(organizationMembers.id, actualMemberId));
 
       res.json({ success: true });
     } catch (error) {
