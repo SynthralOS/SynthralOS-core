@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { codeAgentRegistry, CreateCodeAgentInput, UpdateCodeAgentInput } from '../services/codeAgentRegistry';
 import { auditLogMiddleware } from '../middleware/auditLog';
 import { setOrganization } from '../middleware/organization';
+import { mcpServerService } from '../services/mcpServerService';
 
 const router = Router();
 
