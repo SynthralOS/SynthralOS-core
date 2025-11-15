@@ -166,8 +166,8 @@
 - [ ] **7.1.5** Add code review integration (CodeRabbit/Cursor) - optional
 
 ### 7.2 Compliance
-- [ ] **7.2.1** Ensure tenant-scoped code execution
-- [ ] **7.2.2** Implement 90-day audit log retention
+- [x] **7.2.1** Ensure tenant-scoped code execution ✅ (verified in codeAgentRegistry.getAgent)
+- [x] **7.2.2** Implement 90-day audit log retention ✅ (scheduled daily cleanup)
 - [x] **7.2.3** Add governance metadata requirements ✅ (license and scope in metadata)
 - [x] **7.2.4** Add license and scope fields to code agents ✅
 

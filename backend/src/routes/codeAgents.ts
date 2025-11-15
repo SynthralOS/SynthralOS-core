@@ -75,7 +75,7 @@ router.get('/', authenticate, setOrganization, async (req: AuthRequest, res) => 
 });
 
 // Get code agent by ID
-router.get('/:id', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, setOrganization, async (req: AuthRequest, res) => {
   try {
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -83,7 +83,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     }
 
     const version = req.query.version as string | undefined;
-    const agent = await codeAgentRegistry.getAgent(req.params.id, version);
+    // Verify tenant scoping
+    const agent = await codeAgentRegistry.getAgent(req.params.id, version, {
+      organizationId: req.organizationId,
+      workspaceId: req.workspaceId,
+      userId: req.user.id,
+    });
 
     if (!agent) {
       res.status(404).json({ error: 'Code agent not found' });
@@ -362,7 +367,12 @@ router.post('/:id/execute', authenticate, setOrganization, async (req: AuthReque
     }
 
     const version = req.query.version as string | undefined;
-    const agent = await codeAgentRegistry.getAgent(req.params.id, version);
+    // Verify tenant scoping
+    const agent = await codeAgentRegistry.getAgent(req.params.id, version, {
+      organizationId: req.organizationId,
+      workspaceId: req.workspaceId,
+      userId: req.user.id,
+    });
 
     if (!agent) {
       res.status(404).json({ error: 'Code agent not found' });
