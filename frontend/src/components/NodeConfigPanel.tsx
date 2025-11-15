@@ -330,7 +330,53 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
         );
 
       case 'array':
-        // Handle array inputs (e.g., Switch cases, packages)
+        // Handle array inputs (e.g., Switch cases, packages, tools)
+        if (property.items?.enum && key === 'tools') {
+          // Tool selection for agents
+          const selectedTools = Array.isArray(value) ? value : [];
+          const availableTools = property.items.enum as string[];
+          const toolLabels: Record<string, string> = {
+            calculator: 'Calculator',
+            wikipedia: 'Wikipedia Search',
+            serpapi: 'SerpAPI Search',
+            duckduckgo: 'DuckDuckGo Search',
+            brave: 'Brave Search',
+            execute_code: 'Code Execution',
+          };
+          
+          return (
+            <div className="space-y-2">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Select tools the agent can use
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {availableTools.map((tool) => (
+                  <label key={tool} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedTools.includes(tool)}
+                      onChange={(e) => {
+                        const newTools = e.target.checked
+                          ? [...selectedTools, tool]
+                          : selectedTools.filter((t) => t !== tool);
+                        handleChange(key, newTools);
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:bg-gray-700"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      {toolLabels[tool] || tool}
+                    </span>
+                    {tool === 'execute_code' && (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 ml-auto" title="Allows agent to write and execute custom code">
+                        ⚡
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        }
         if (property.format === 'packages') {
           // Packages: one per line
           const packagesArray = Array.isArray(value) ? value : [];

@@ -1185,7 +1185,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           type: 'array',
           items: {
             type: 'string',
-            enum: ['calculator', 'wikipedia', 'serpapi', 'duckduckgo', 'brave'],
+            enum: ['calculator', 'wikipedia', 'serpapi', 'duckduckgo', 'brave', 'execute_code'],
           },
           description: 'Tools available to the agent',
         },
