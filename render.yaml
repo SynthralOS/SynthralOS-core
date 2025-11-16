@@ -1,19 +1,23 @@
 services:
-  # Backend API Service
+  # Backend API Service (serves both API and frontend)
   - type: web
     name: sos-backend
     env: node
     region: oregon
     plan: starter
-    rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    # No rootDir - build from root to use root package-lock.json
+    buildCommand: npm ci && cd backend && npm run build
+    startCommand: cd backend && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 4000
+      # Frontend build-time environment variables
+      # VITE_API_URL will be set to the backend URL (same origin since frontend is served from backend)
+      - key: VITE_API_URL
+        value: ""  # Empty string - socket.io will use window.location.origin at runtime
       
       # Database (Supabase PostgreSQL)
       - key: DATABASE_URL
@@ -56,12 +60,9 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false  # Set this in Render dashboard
       
-      # CORS - Will be set automatically from frontend service
+      # CORS - Frontend is served from the same origin as backend
       - key: CORS_ORIGIN
-        fromService:
-          name: sos-frontend
-          type: web
-          property: host
+        value: https://sos-backend-yffi.onrender.com
       
       # OpenTelemetry (Optional)
       - key: OTEL_ENABLED
@@ -97,22 +98,22 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-  # Frontend Static Site
-  - type: web
-    name: sos-frontend
-    env: static
-    region: oregon
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          name: sos-backend
-          type: web
-          property: host
-      - key: VITE_CLERK_PUBLISHABLE_KEY
-        sync: false  # Set this in Render dashboard (same as CLERK_PUBLISHABLE_KEY)
+  # Frontend Static Site - DISABLED: Frontend is now served from backend
+  # - type: web
+  #   name: sos-frontend
+  #   env: static
+  #   region: oregon
+  #   rootDir: frontend
+  #   buildCommand: npm ci && npm run build
+  #   staticPublishPath: ./dist
+  #   envVars:
+  #     - key: VITE_API_URL
+  #       fromService:
+  #         name: sos-backend
+  #         type: web
+  #         property: host
+  #     - key: VITE_CLERK_PUBLISHABLE_KEY
+  #       sync: false  # Set this in Render dashboard (same as CLERK_PUBLISHABLE_KEY)
 
   # Redis Service
   - type: redis

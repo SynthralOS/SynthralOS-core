@@ -91,7 +91,9 @@ export default function ExecutionMonitor({ executionId, onClose }: ExecutionMoni
   useEffect(() => {
     if (!executionId) return;
 
-    const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:4000', {
+    // Use window.location.origin if VITE_API_URL is empty (when frontend is served from backend)
+    const apiUrl = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
+    const newSocket = io(apiUrl, {
       transports: ['websocket'],
     });
 

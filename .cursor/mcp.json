@@ -9,6 +9,12 @@
         "-y",
         "@modelcontextprotocol/server-puppeteer"
       ]
+    },
+    "render": {
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_g6uvy7ZKSof54XqbNN19YtirnnMI"
+      }
     }
   }
 }
