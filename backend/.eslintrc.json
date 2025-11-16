@@ -1,9 +1,0 @@
-{
-  "root": false,
-  "extends": ["../.eslintrc.json"],
-  "env": {
-    "node": true,
-    "es2022": true
-  }
-}
-

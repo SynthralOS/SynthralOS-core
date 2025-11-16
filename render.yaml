@@ -5,7 +5,7 @@ services:
     env: node
     region: oregon
     plan: standard  # Upgraded plan with more CPU and space
-    # Single package.json at root - simple build process
+    # Single package.json at root - all config files at root
     buildCommand: npm ci --legacy-peer-deps --no-audit --no-fund && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -14,10 +14,18 @@ services:
       paths:
         - backend/**
         - shared/**
+        - frontend/**
         - package.json
         - package-lock.json
         - render.yaml
         - .npmrc
+        - vite.config.ts
+        - drizzle.config.ts
+        - jest.config.js
+        - tailwind.config.js
+        - postcss.config.js
+        - tsconfig.*.json
+        - index.html
     envVars:
       - key: NODE_ENV
         value: production

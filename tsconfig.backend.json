@@ -3,8 +3,8 @@
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022"],
-    "outDir": "./dist",
-    "rootDir": ".",
+    "outDir": "./backend/dist",
+    "rootDir": "./backend",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,13 +14,13 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
+    "baseUrl": "./backend",
     "paths": {
-      "@/*": ["src/*"],
-      "@sos/shared": ["../shared/src"]
+      "@/*": ["./backend/src/*"],
+      "@sos/shared": ["./shared/src"]
     }
   },
-  "include": ["src/**/*", "drizzle/**/*"],
+  "include": ["backend/src/**/*", "backend/drizzle/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
 

@@ -15,13 +15,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
+    "baseUrl": "./frontend",
     "paths": {
-      "@/*": ["src/*"],
-      "@sos/shared": ["../shared/src"]
+      "@/*": ["./frontend/src/*"],
+      "@sos/shared": ["./shared/src"]
     }
   },
-  "include": ["src"],
+  "include": ["frontend/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
 
