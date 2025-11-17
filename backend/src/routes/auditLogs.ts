@@ -492,11 +492,17 @@ router.post('/retention/cleanup', authenticate, setOrganization, async (req: Aut
     }
 
     // Only allow admins to perform actual cleanup
-    // TODO: Add admin check middleware
-    // if (!req.user.isAdmin) {
-    //   res.status(403).json({ error: 'Forbidden: Admin access required' });
-    //   return;
-    // }
+    const { permissionService } = await import('../services/permissionService');
+    const hasAdminPermission = await permissionService.hasPermission(
+      req.user.id,
+      req.organizationId!,
+      { resourceType: 'organization', action: 'admin' }
+    );
+    
+    if (!hasAdminPermission) {
+      res.status(403).json({ error: 'Forbidden: Admin access required' });
+      return;
+    }
 
     const retentionDays = req.body.retentionDays || 90;
     const result = await auditLogRetentionService.cleanupOldLogs({

@@ -101,7 +101,7 @@ export const TraceViewer: React.FC<TraceViewerProps> = ({
         ...(workspaceId && { workspaceId }),
         ...(userId && { userId }),
       });
-      const response = await api.get(`/api/v1/observability/traces?${params}`);
+      const response = await api.get(`/observability/traces?${params}`);
       setTraces(response.data.traces || []);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load traces');
@@ -115,7 +115,7 @@ export const TraceViewer: React.FC<TraceViewerProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get(`/api/v1/observability/traces/${id}`);
+      const response = await api.get(`/observability/traces/${id}`);
       setSelectedTrace(response.data);
       if (onTraceSelect) {
         onTraceSelect(id);

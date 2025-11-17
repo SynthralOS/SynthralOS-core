@@ -382,15 +382,43 @@ router.post('/:id/execute', authenticate, setOrganization, async (req: AuthReque
 
     const input = req.body.input || {};
 
-    // Execute agent code
-    // This would call the code execution service
-    // For now, return placeholder
+    // Execute agent code using the code execution service
+    const { executeCode } = await import('../services/nodeExecutors/code');
+    
+    const executionContext = {
+      input: input,
+      config: {
+        code: agent.code,
+        packages: agent.packages || [],
+        timeout: 30000,
+        runtime: agent.runtime || 'vm2',
+        codeAgentId: agent.id,
+      },
+      workflowId: `agent-${agent.id}`,
+      nodeId: 'code-agent',
+      executionId: `agent-exec-${Date.now()}`,
+      organizationId: req.organizationId,
+      workspaceId: req.workspaceId,
+      userId: req.user.id,
+    };
+
+    const result = await executeCode(executionContext, agent.language as 'javascript' | 'python' | 'typescript' | 'bash');
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error?.message || 'Code execution failed',
+        details: result.error,
+      });
+    }
+
     res.json({
       success: true,
-      output: {
-        message: `Code agent ${agent.name} executed`,
+      output: result.output,
+      metadata: {
         agentId: agent.id,
         version: agent.version,
+        executionTime: result.executionTime,
       },
     });
   } catch (error: any) {
