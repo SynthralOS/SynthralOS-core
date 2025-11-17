@@ -23,12 +23,10 @@ RUN npm run build
 # Verify backend/dist/index.js exists
 RUN if [ ! -f backend/dist/index.js ]; then \
       echo "ERROR: backend/dist/index.js not found!"; \
-      echo "Contents of backend/:"; \
-      ls -la backend/ || true; \
       echo "Contents of backend/dist/:"; \
       ls -la backend/dist/ || true; \
-      echo "Checking if backend/dist exists:"; \
-      test -d backend/dist && echo "backend/dist exists" || echo "backend/dist does NOT exist"; \
+      echo "Contents of backend/dist/src/ (if exists):"; \
+      ls -la backend/dist/src/ 2>/dev/null || echo "backend/dist/src/ does not exist"; \
       exit 1; \
     else \
       echo "✓ backend/dist/index.js found"; \
