@@ -51,22 +51,14 @@ Go to your service → **Variables** tab and add:
 - [ ] Railway will auto-inject `REDIS_URL` environment variable
 - [ ] Link Redis service to your backend service
 
-### Step 6: Setup GitHub Actions
-- [ ] Go to Railway Dashboard → Account Settings → Tokens
-- [ ] Click **"New Token"**
-- [ ] Copy the token
-- [ ] Go to GitHub → Repository → Settings → Secrets and variables → Actions
-- [ ] Add secret: `RAILWAY_TOKEN` = (paste token)
-- [ ] (Optional) Add secret: `RAILWAY_SERVICE_ID` = (your service ID)
-
-### Step 7: Test Deployment
+### Step 6: Test Deployment
 - [ ] Push to `main` branch
 - [ ] Check GitHub Actions - workflow should run
 - [ ] Check Railway dashboard - deployment should start
 - [ ] Monitor build logs
 - [ ] Verify deployment completes successfully
 
-### Step 8: Verify Application
+### Step 7: Verify Application
 - [ ] Get your Railway app URL from dashboard
 - [ ] Test health endpoint: `https://your-app.railway.app/health`
 - [ ] Update `CORS_ORIGIN` to your Railway app URL
@@ -75,24 +67,27 @@ Go to your service → **Variables** tab and add:
 ## 🎯 Railway Configuration
 
 ### Current Setup
-- **Builder**: Dockerfile (matches local environment)
-- **Dockerfile**: `Dockerfile` (multi-stage build)
+- **Builder**: Nixpacks (Railway's auto-detection)
+- **Build Command**: `npm ci --legacy-peer-deps --no-audit --no-fund && npm run build`
 - **Start Command**: `npm start` (runs `cd backend && node dist/index.js`)
 - **Port**: `4000` (auto-detected by Railway)
+- **Deployment**: Automatic on push to `main` via GitHub integration
 
 ### Auto-Deploy
-- ✅ Automatic deployment on push to `main`
-- ✅ GitHub Actions workflow triggers Railway CLI deployment
+- ✅ Automatic deployment on push to `main` via GitHub integration
 - ✅ Railway dashboard shows deployment status
+- ✅ No GitHub Actions needed - Railway handles everything
 
 ## 📝 Notes
 
-- Railway uses Docker for builds (same as local)
+- Railway uses Nixpacks for builds (auto-detects Node.js)
+- Configuration is in `railway.json`
 - Environment variables are set in Railway dashboard
 - Redis can be added as a Railway service (auto-linked)
 - PostgreSQL can use Railway's or external (Supabase)
 - WebSockets are fully supported
 - Long-running processes are supported
+- No GitHub Actions needed - Railway's GitHub integration handles deployments
 
 ## 🔄 Migration from Render
 

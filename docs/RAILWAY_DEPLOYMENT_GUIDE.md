@@ -19,58 +19,42 @@ This guide covers deploying the SynthralOS platform to Railway.
 
 ## Quick Setup
 
-### Option 1: GitHub Integration (Recommended)
+### Step 1: Sign up for Railway
+1. Go to [railway.app](https://railway.app)
+2. Sign up with GitHub
+3. Authorize Railway to access your repositories
 
-1. **Sign up for Railway**
-   - Go to [railway.app](https://railway.app)
-   - Sign up with GitHub
-   - Authorize Railway to access your repositories
+### Step 2: Create New Project
+1. Click **"New Project"**
+2. Select **"Deploy from GitHub repo"**
+3. Choose your repository: `SynthralOS/SynthralOS-core`
+4. Railway will automatically:
+   - Detect it's a Node.js application
+   - Use `railway.json` configuration
+   - Set up auto-deployment on push to `main`
 
-2. **Create New Project**
-   - Click **"New Project"**
-   - Select **"Deploy from GitHub repo"**
-   - Choose your repository: `SynthralOS/SynthralOS-core`
+### Step 3: Configure Service (Optional)
+Railway will auto-detect settings from `railway.json`:
+- **Build Command**: `npm ci --legacy-peer-deps --no-audit --no-fund && npm run build`
+- **Start Command**: `npm start`
+- **Root Directory**: `.` (root)
 
-3. **Configure Service**
-   - Railway will auto-detect Node.js
-   - **Root Directory**: `.` (root)
-   - **Build Command**: `npm ci --legacy-peer-deps && npm run build`
-   - **Start Command**: `npm start`
-   - Railway will use `railway.json` if present
+You can adjust these in Railway dashboard if needed.
 
-4. **Add Environment Variables**
-   - Go to your service → **Variables** tab
-   - Add all required environment variables (see below)
+### Step 4: Add Environment Variables
+1. Go to your service → **Variables** tab
+2. Add all required environment variables (see below)
+3. Railway will automatically redeploy when you save
 
-5. **Add Redis Service** (if needed)
-   - Click **"+ New"** → **"Database"** → **"Redis"**
-   - Railway will auto-inject `REDIS_URL`
+### Step 5: Add Redis Service (Optional)
+1. Click **"+ New"** → **"Database"** → **"Redis"**
+2. Railway will auto-inject `REDIS_URL` environment variable
+3. Link Redis service to your backend service
 
-6. **Deploy**
-   - Railway automatically deploys on every push to `main`
-   - Check deployment logs in the dashboard
-
-### Option 2: Railway CLI
-
-1. **Install Railway CLI**
-   ```bash
-   npm i -g @railway/cli
-   ```
-
-2. **Login**
-   ```bash
-   railway login
-   ```
-
-3. **Link Project**
-   ```bash
-   railway link
-   ```
-
-4. **Deploy**
-   ```bash
-   railway up
-   ```
+### Step 6: Deploy
+- Railway automatically deploys on every push to `main` branch
+- Check deployment logs in the Railway dashboard
+- Monitor build and runtime logs
 
 ## Environment Variables
 
@@ -130,30 +114,20 @@ POSTHOG_HOST=https://app.posthog.com
 JWT_SECRET=your-secret-key
 ```
 
-## GitHub Actions Deployment
+## Automatic Deployment
 
-The `.github/workflows/railway-deploy.yml` workflow is configured to automatically deploy on push to `main`.
-
-### Setup GitHub Secrets
-
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Add the following secrets:
-
-   - **`RAILWAY_TOKEN`**: Your Railway API token
-     - Get it from: Railway Dashboard → Account Settings → Tokens → New Token
-   
-   - **`RAILWAY_SERVICE_ID`** (optional): Your service ID
-     - Get it from: Railway Dashboard → Your Service → Settings → Service ID
-     - If not set, defaults to `web`
+Railway automatically deploys when you:
+- Push to the `main` branch
+- Merge a pull request to `main`
+- Manually trigger deployment from Railway dashboard
 
 ### Verify Deployment
 
 After pushing to `main`:
-1. Check GitHub Actions tab - workflow should run
-2. Check Railway dashboard - deployment should start
-3. Monitor build logs in Railway
-4. Test your application URL
+1. Check Railway dashboard - deployment should start automatically
+2. Monitor build logs in Railway dashboard
+3. Check deployment status
+4. Test your application URL once deployment completes
 
 ## Configuration Files
 
@@ -166,7 +140,7 @@ Railway uses `railway.json` for configuration:
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm ci --legacy-peer-deps && npm run build"
+    "buildCommand": "npm ci --legacy-peer-deps --no-audit --no-fund && npm run build"
   },
   "deploy": {
     "startCommand": "npm start",
@@ -176,12 +150,7 @@ Railway uses `railway.json` for configuration:
 }
 ```
 
-### Dockerfile (Alternative)
-
-Railway can also use Dockerfile for more control:
-- Railway will auto-detect `Dockerfile` if present
-- Uses Dockerfile instead of Nixpacks
-- More control over build process
+Railway will automatically use this configuration when you connect your GitHub repository.
 
 ## Railway vs Render
 
