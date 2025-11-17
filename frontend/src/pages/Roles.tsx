@@ -451,7 +451,6 @@ export default function Roles() {
                 Close
               </button>
             </div>
-            </div>
           </div>
         </div>
       )}
