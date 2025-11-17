@@ -1,14 +1,12 @@
 # Fly.io app configuration file
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 
-app = "sos-hs5xqw"
+app = "sos-xzmmlw"
 primary_region = "iad"  # Washington, D.C. - change to your preferred region
 
 [build]
   dockerfile = "Dockerfile"
   ignorefile = ".flyignore"
-  # Explicitly disable buildpack detection
-  builder = "dockerfile"
 
 [env]
   NODE_ENV = "production"
