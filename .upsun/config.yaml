@@ -6,7 +6,10 @@ applications:
     type: nodejs:20
     hooks:
       build: |
-        export PATH="$PATH:$(pwd)/node_modules/.bin"
+        # Ensure dev dependencies are available (Upsun installs them automatically, but verify)
+        if ! command -v tsc &> /dev/null && [ -f node_modules/.bin/tsc ]; then
+          export PATH="$PATH:$(pwd)/node_modules/.bin"
+        fi
         npm run build
     web:
       commands:
