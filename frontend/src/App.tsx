@@ -62,7 +62,11 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <ClerkProvider 
+        publishableKey={CLERK_PUBLISHABLE_KEY}
+        afterSignInUrl="/dashboard"
+        afterSignUpUrl="/dashboard"
+      >
         <ThemeProvider>
           <AuthProvider>
             <ModalProvider>

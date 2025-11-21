@@ -12,6 +12,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: '0.0.0.0', // Allow external connections
+    allowedHosts: [
+      'localhost',
+      '.trycloudflare.com', // Allow all Cloudflare tunnel subdomains
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:4000',

@@ -307,6 +307,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
           <select
             value={value as string || ''}
             onChange={(e) => handleChange(key, e.target.value || undefined)}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
           >
             <option value="">None (no hook)</option>
@@ -326,15 +329,33 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
     switch (property.type) {
       case 'string':
         if (property.enum) {
+          // Map agent framework values to display names
+          const getDisplayName = (val: string, key: string) => {
+            if (key === 'agentType') {
+              const frameworkLabels: Record<string, string> = {
+                'auto': 'Auto (Intelligent Routing)',
+                'one-shot': 'One-Shot Agent',
+                'recursive': 'Recursive Agent',
+                'multi-role': 'Multi-Role Agent',
+                'collaborative': 'Collaborative Agent',
+              };
+              return frameworkLabels[val] || val;
+            }
+            return String(val);
+          };
+          
           return (
             <select
               value={value as string}
               onChange={(e) => handleChange(key, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
               className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               {property.enum.map((opt: unknown) => (
                 <option key={String(opt)} value={String(opt)}>
-                  {String(opt)}
+                  {getDisplayName(String(opt), key)}
                 </option>
               ))}
             </select>
@@ -445,6 +466,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
           <textarea
             value={value as string}
             onChange={(e) => handleChange(key, e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             placeholder={property.description}
             rows={3}
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm"
@@ -483,6 +507,8 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                           : selectedTools.filter((t) => t !== tool);
                         handleChange(key, newTools);
                       }}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:bg-gray-700"
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -511,6 +537,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                   const lines = e.target.value.split('\n').filter(line => line.trim());
                   handleChange(key, lines);
                 }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
                 placeholder="pandas&#10;numpy&#10;requests"
                 rows={4}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono text-sm"
@@ -532,6 +561,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                   // Invalid JSON, keep as string for now
                 }
               }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
               placeholder={property.description || 'Enter JSON array'}
               rows={6}
               className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono text-sm"
@@ -547,6 +579,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
               type="number"
               value={value as number}
               onChange={(e) => handleChange(key, parseFloat(e.target.value))}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
               min={property.minimum}
               max={property.maximum}
               className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
@@ -565,6 +600,8 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
             type="checkbox"
             checked={value as boolean}
             onChange={(e) => handleChange(key, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:bg-gray-700"
           />
         );
@@ -575,6 +612,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
             type="text"
             value={String(value)}
             onChange={(e) => handleChange(key, e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
           />
         );
@@ -582,7 +622,12 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
   };
 
   return (
-    <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full">
+    <div 
+      className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Configure Node</h3>
@@ -739,6 +784,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                                   newSelectors[e.target.value] = selector;
                                   handleChange('selectors', newSelectors);
                                 }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()}
                                 className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm"
                               />
                               <input
@@ -750,6 +798,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                                   newSelectors[fieldName] = e.target.value;
                                   handleChange('selectors', newSelectors);
                                 }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()}
                                 className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-mono"
                               />
                               <button
@@ -915,6 +966,8 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                   type="checkbox"
                   checked={(node.data.breakpoint as boolean) || false}
                   onChange={(e) => onUpdate(node.id, { ...node.data, breakpoint: e.target.checked })}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:bg-gray-700"
                 />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Breakpoint</span>
@@ -935,6 +988,8 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                   type="checkbox"
                   checked={(retry.enabled as boolean) || false}
                   onChange={(e) => handleRetryChange('enabled', e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:bg-gray-700"
                 />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Retry</span>
@@ -954,6 +1009,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                     max="10"
                     value={(retry.maxAttempts as number) || 3}
                     onChange={(e) => handleRetryChange('maxAttempts', parseInt(e.target.value))}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Maximum number of retry attempts (1-10)</p>
@@ -966,6 +1024,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                   <select
                     value={(retry.backoff as string) || 'exponential'}
                     onChange={(e) => handleRetryChange('backoff', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                   >
                     <option value="exponential">Exponential (delay × 2^attempt)</option>
@@ -985,6 +1046,9 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
                     step="100"
                     value={(retry.delay as number) || 1000}
                     onChange={(e) => handleRetryChange('delay', parseInt(e.target.value))}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Initial delay before first retry (100-60000ms)</p>

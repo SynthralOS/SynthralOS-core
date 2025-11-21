@@ -21,6 +21,17 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const { resolvedTheme } = useTheme();
   const editorRef = useRef<any>(null);
+  
+  const handleEditorMount = (editor: any, monaco: any) => {
+    // Stop event propagation to prevent ReactFlow from capturing events
+    const editorContainer = editor.getContainerDomNode();
+    if (editorContainer) {
+      editorContainer.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+      editorContainer.addEventListener('mousedown', (e: MouseEvent) => e.stopPropagation());
+      editorContainer.addEventListener('keydown', (e: KeyboardEvent) => e.stopPropagation());
+    }
+    handleEditorDidMount(editor, monaco);
+  };
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
@@ -84,7 +95,7 @@ export function CodeEditor({
         theme={resolvedTheme === 'dark' ? 'vs-dark' : 'vs-light'}
         value={value}
         onChange={handleEditorChange}
-        onMount={handleEditorDidMount}
+        onMount={handleEditorMount}
         options={{
           minimap: { enabled: false },
           fontSize: 14,

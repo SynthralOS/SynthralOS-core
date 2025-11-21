@@ -16,6 +16,8 @@ export default function Signup() {
             routing="path"
             path="/signup"
             signInUrl="/login"
+            afterSignUpUrl="/dashboard"
+            redirectUrl={window.location.origin + "/dashboard"}
             appearance={{
               elements: {
                 rootBox: "mx-auto",

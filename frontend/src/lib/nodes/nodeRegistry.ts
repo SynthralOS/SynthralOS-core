@@ -1178,7 +1178,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
       properties: {
         agentType: {
           type: 'string',
-          enum: ['auto', 'react', 'agentgpt', 'autogpt', 'metagpt', 'autogen'],
+          enum: ['auto', 'one-shot', 'recursive', 'multi-role', 'collaborative'],
           default: 'auto',
           description: 'Agent framework (auto = intelligent routing)',
         },
