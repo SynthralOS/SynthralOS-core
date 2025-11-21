@@ -23,7 +23,7 @@ const navItems: NavItem[] = [
   { to: '/dashboard/settings/audit-logs', label: 'Audit Logs', icon: <AuditLogsIcon />, section: 'settings' },
   { to: '/dashboard/monitoring/email-triggers', label: 'Email Monitoring', icon: <EmailMonitoringIcon />, section: 'monitoring' },
   { to: '/dashboard/monitoring/performance', label: 'Performance', icon: <PerformanceIcon />, section: 'monitoring' },
-  { to: '/dashboard/monitoring/osint', label: 'OSINT Monitoring', icon: <OSINTIcon />, section: 'monitoring' },
+  { to: '/dashboard/monitoring/osint', label: 'Social Media Monitoring', icon: <OSINTIcon />, section: 'monitoring' },
   { to: '/dashboard/agents/copilot', label: 'Agent Copilot', icon: <AgentCopilotIcon />, section: 'agents' },
   { to: '/dashboard/agents/catalogue', label: 'Agent Catalogue', icon: <AgentCatalogueIcon />, section: 'agents' },
   { to: '/dashboard/sandbox', label: 'Sandbox Studio', icon: <SandboxStudioIcon />, section: 'agents' },
@@ -181,11 +181,23 @@ export default function Layout() {
     return location.pathname.startsWith(path);
   };
 
+  // Filter nav items based on user role (hide email monitoring from non-admin users)
+  // TODO: Implement proper role checking when backend provides user roles
+  const filteredNavItems = navItems.filter(item => {
+    // Hide email monitoring from non-admin users (internal/admin only)
+    if (item.to === '/dashboard/monitoring/email-triggers') {
+      // For now, show to all users - will be filtered by role when role system is implemented
+      // return user?.role === 'admin' || user?.role === 'super_admin';
+      return false; // Hide email monitoring as per user request - it's for internal use only
+    }
+    return true;
+  });
+
   const groupedNavItems = {
-    main: navItems.filter(item => item.section === 'main'),
-    agents: navItems.filter(item => item.section === 'agents'),
-    monitoring: navItems.filter(item => item.section === 'monitoring'),
-    settings: navItems.filter(item => item.section === 'settings'),
+    main: filteredNavItems.filter(item => item.section === 'main'),
+    agents: filteredNavItems.filter(item => item.section === 'agents'),
+    monitoring: filteredNavItems.filter(item => item.section === 'monitoring'),
+    settings: filteredNavItems.filter(item => item.section === 'settings'),
   };
 
   return (

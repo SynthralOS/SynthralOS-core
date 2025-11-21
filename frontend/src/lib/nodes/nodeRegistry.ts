@@ -1042,9 +1042,9 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
         },
         provider: {
           type: 'string',
-          enum: ['openai', 'google', 'azure'],
-          default: 'openai',
-          description: 'Vision API provider',
+          enum: ['google'],
+          default: 'google',
+          description: 'Vision API provider (Google Vision)',
         },
         prompt: {
           type: 'string',
@@ -1080,7 +1080,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
       properties: {
         provider: {
           type: 'string',
-          enum: ['tesseract', 'google', 'aws', 'azure', 'openai'],
+          enum: ['paddle', 'easyocr', 'tesseract', 'google', 'docktr', 'nlweb', 'omniparser'],
           default: 'tesseract',
           description: 'OCR provider to use',
         },
@@ -1190,8 +1190,9 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
         },
         model: {
           type: 'string',
+          enum: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-4o', 'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'claude-3-5-sonnet'],
           default: 'gpt-4',
-          description: 'Model name (e.g., gpt-4, gpt-3.5-turbo, claude-3-opus)',
+          description: 'Model name',
         },
         temperature: {
           type: 'number',
@@ -1221,6 +1222,16 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
           type: 'boolean',
           default: true,
           description: 'Use intelligent framework routing (when agentType is auto)',
+        },
+        systemPrompt: {
+          type: 'string',
+          description: 'System prompt for the agent',
+          default: '',
+        },
+        selectedAgent: {
+          type: 'string',
+          description: 'Select a pre-configured agent (optional - if not set, agent will be created with above settings)',
+          default: '',
         },
       },
       required: ['provider', 'model'],
@@ -1812,7 +1823,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
   // OSINT (Open Source Intelligence) Nodes
   'osint.search': {
     type: 'osint.search',
-    name: 'OSINT Search',
+    name: 'Social Media Search',
     description: 'Search social media, news, forums, and web sources',
     category: 'osint',
     icon: 'search',
@@ -1852,7 +1863,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
   },
   'osint.monitor': {
     type: 'osint.monitor',
-    name: 'OSINT Monitor',
+    name: 'Social Media Monitor',
     description: 'Trigger data collection for an OSINT monitor',
     category: 'osint',
     icon: 'eye',
@@ -1877,7 +1888,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
   },
   'osint.get_results': {
     type: 'osint.get_results',
-    name: 'Get OSINT Results',
+    name: 'Get Social Media Results',
     description: 'Retrieve collected results from an OSINT monitor',
     category: 'osint',
     icon: 'database',

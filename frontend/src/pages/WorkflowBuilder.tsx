@@ -1025,7 +1025,21 @@ function WorkflowBuilderContent() {
           <NodeConfigPanel
             node={selectedNode}
             onUpdate={handleUpdateNode}
-            onClose={() => setShowConfig(false)}
+            onClose={() => {
+              setSelectedNode(null);
+              setShowConfig(false);
+            }}
+            onDelete={(nodeId) => {
+              const newNodes = nodes.filter((n) => n.id !== nodeId);
+              const newEdges = edges.filter(
+                (e) => e.source !== nodeId && e.target !== nodeId
+              );
+              setNodes(newNodes);
+              setEdges(newEdges);
+              setSelectedNode(null);
+              setShowConfig(false);
+              saveToHistory(newNodes, newEdges);
+            }}
           />
         )}
 

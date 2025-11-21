@@ -33,6 +33,7 @@ const categories = [
 export default function NodePalette({ onAddNode }: NodePaletteProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedConnector, setExpandedConnector] = useState<string | null>(null);
 
   // Fetch connectors from backend
   const { data: connectors = [] } = useQuery<ConnectorManifest[]>({
@@ -48,7 +49,30 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
     },
   });
 
-  // Generate integration nodes from connectors
+  // Group connectors by connector ID for better UI (like Make.com)
+  const connectorGroups = useMemo(() => {
+    const groups = new Map<string, {
+      connector: ConnectorManifest;
+      actions: Array<{ id: string; name: string; description: string }>;
+    }>();
+    
+    connectors.forEach((connector) => {
+      if (!groups.has(connector.id)) {
+        groups.set(connector.id, {
+          connector,
+          actions: [],
+        });
+      }
+      const group = groups.get(connector.id)!;
+      connector.actions.forEach((action) => {
+        group.actions.push(action);
+      });
+    });
+    
+    return Array.from(groups.values());
+  }, [connectors]);
+
+  // Generate integration nodes from connectors (for backward compatibility)
   const integrationNodes = useMemo(() => {
     const nodes: NodeDefinition[] = [];
     
@@ -148,7 +172,92 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        {filteredNodes.length === 0 ? (
+        {selectedCategory === 'integration' && connectorGroups.length > 0 ? (
+          // Show connectors grouped by connector (like Make.com)
+          <div className="space-y-1">
+            {connectorGroups
+              .filter(group => {
+                if (!searchQuery) return true;
+                const query = searchQuery.toLowerCase();
+                return (
+                  group.connector.name.toLowerCase().includes(query) ||
+                  group.connector.description?.toLowerCase().includes(query) ||
+                  group.actions.some(a => a.name.toLowerCase().includes(query) || a.description?.toLowerCase().includes(query))
+                );
+              })
+              .map((group) => {
+                const isExpanded = expandedConnector === group.connector.id;
+                return (
+                  <div key={group.connector.id} className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+                    <button
+                      onClick={() => setExpandedConnector(isExpanded ? null : group.connector.id)}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      {/* Connector Logo/Icon */}
+                      {group.connector.icon ? (
+                        <img 
+                          src={group.connector.icon} 
+                          alt={group.connector.name}
+                          className="w-5 h-5 rounded"
+                          onError={(e) => {
+                            // Fallback to emoji if image fails to load
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs">
+                          {group.connector.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                          {group.connector.name}
+                        </div>
+                        {group.connector.description && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                            {group.connector.description}
+                          </div>
+                        )}
+                      </div>
+                      <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                        {group.actions.map((action) => {
+                          const nodeType = `integration.${group.connector.id}`;
+                          return (
+                            <button
+                              key={action.id}
+                              onClick={() => {
+                                handleNodeClick(nodeType);
+                                // Keep connector expanded after adding node
+                              }}
+                              className="w-full text-left px-3 py-2 pl-8 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700 last:border-b-0 transition-colors"
+                              title={action.description}
+                            >
+                              <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{action.name}</div>
+                              {action.description && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                                  {action.description}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        ) : filteredNodes.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
             No nodes found
           </div>

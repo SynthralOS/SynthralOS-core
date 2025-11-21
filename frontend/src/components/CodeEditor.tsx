@@ -21,7 +21,7 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const { resolvedTheme } = useTheme();
   const editorRef = useRef<any>(null);
-  
+
   const handleEditorMount = (editor: any, monaco: any) => {
     // Stop event propagation to prevent ReactFlow from capturing events
     const editorContainer = editor.getContainerDomNode();

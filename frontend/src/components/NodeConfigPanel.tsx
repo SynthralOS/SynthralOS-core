@@ -10,23 +10,24 @@ interface NodeConfigPanelProps {
   node: Node | null;
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void;
   onClose: () => void;
+  onDelete?: (nodeId: string) => void;
 }
 
-export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
+export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelProps) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [retry, setRetry] = useState<Record<string, unknown>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
-  const { alert, prompt } = useModals();
+  const { alert, confirm } = useModals();
 
-  // Fetch code agents for hook selection
+  // Fetch code agents for hook selection and AI agent selection
   const { data: codeAgents } = useQuery({
     queryKey: ['code-agents'],
     queryFn: async () => {
       const response = await api.get('/code-agents');
       return response.data;
     },
-    enabled: node?.data?.type === 'ai.rag' || node?.data?.type === 'ai.document_ingest',
+    enabled: node?.data?.type === 'ai.rag' || node?.data?.type === 'ai.document_ingest' || node?.data?.type === 'ai.agent',
   });
 
   // Check if this is an integration node
@@ -300,8 +301,8 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
   const renderInput = (key: string, property: any) => {
     const value = config[key] ?? property.default ?? '';
 
-    // Special handling for hook fields (preIngestHook, postAnswerHook)
-    if (key === 'preIngestHook' || key === 'postAnswerHook') {
+    // Special handling for hook fields (preIngestHook, postAnswerHook) and agent selection
+    if (key === 'preIngestHook' || key === 'postAnswerHook' || key === 'selectedAgent') {
       return (
         <div className="space-y-2">
           <select
@@ -312,7 +313,7 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
             onKeyDown={(e) => e.stopPropagation()}
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
           >
-            <option value="">None (no hook)</option>
+            <option value="">{key === 'selectedAgent' ? 'Create new agent (use settings below)' : 'None (no hook)'}</option>
             {codeAgents?.map((agent: any) => (
               <option key={agent.id} value={agent.id}>
                 {agent.name} ({agent.language}) - v{agent.version}
@@ -631,12 +632,33 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigP
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Configure Node</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            ✕
-          </button>
+          <div className="flex gap-2">
+            {onDelete && (
+              <button
+                onClick={async () => {
+                  const confirmed = await confirm(
+                    'Are you sure you want to delete this node?',
+                    'Delete Node',
+                    'danger'
+                  );
+                  if (confirmed) {
+                    onDelete(node.id);
+                    onClose();
+                  }
+                }}
+                className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                title="Delete node"
+              >
+                🗑️
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400">{nodeDef.name}</p>
         {nodeDef.description && (

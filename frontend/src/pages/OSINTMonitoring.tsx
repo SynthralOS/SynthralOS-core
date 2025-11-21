@@ -171,7 +171,7 @@ export default function OSINTMonitoring() {
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-gray-100 dark:via-gray-200 dark:to-gray-100 bg-clip-text text-transparent">
-            OSINT / Social Monitoring
+            Social Media Monitoring
           </h1>
           <p className="text-gray-600 dark:text-gray-400">Monitor social media, news, forums, and web sources for keywords and mentions</p>
         </div>
