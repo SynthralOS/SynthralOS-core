@@ -1176,10 +1176,14 @@ function WorkflowBuilderContent() {
   );
 }
 
+import ErrorBoundary from '../components/ErrorBoundary';
+
 export default function WorkflowBuilder() {
   return (
-    <ReactFlowProvider>
-      <WorkflowBuilderContent />
-    </ReactFlowProvider>
+    <ErrorBoundary>
+      <ReactFlowProvider>
+        <WorkflowBuilderContent />
+      </ReactFlowProvider>
+    </ErrorBoundary>
   );
 }

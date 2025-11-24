@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ModalProvider } from './lib/modals';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 import PublicLayout from './components/PublicLayout';
@@ -61,16 +62,17 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ClerkProvider 
-        publishableKey={CLERK_PUBLISHABLE_KEY}
-        afterSignInUrl="/dashboard"
-        afterSignUpUrl="/dashboard"
-      >
-        <ThemeProvider>
-          <AuthProvider>
-            <ModalProvider>
-              <BrowserRouter>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ClerkProvider 
+          publishableKey={CLERK_PUBLISHABLE_KEY}
+          afterSignInUrl="/dashboard"
+          afterSignUpUrl="/dashboard"
+        >
+          <ThemeProvider>
+            <AuthProvider>
+              <ModalProvider>
+                <BrowserRouter>
           <Routes>
             <Route
               path="/"
@@ -146,11 +148,12 @@ function App() {
             </Route>
           </Routes>
         </BrowserRouter>
-            </ModalProvider>
-      </AuthProvider>
-      </ThemeProvider>
-    </ClerkProvider>
-    </QueryClientProvider>
+              </ModalProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </ClerkProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
