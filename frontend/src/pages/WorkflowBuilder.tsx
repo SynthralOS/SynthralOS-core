@@ -18,6 +18,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
+import WorkflowChat from '../components/WorkflowChat';
 import { useModals } from '../lib/modals';
 import ExecutionMonitor from '../components/ExecutionMonitor';
 import WorkflowVersions from '../components/WorkflowVersions';
@@ -47,6 +48,7 @@ function WorkflowBuilderContent() {
   const [showVersions, setShowVersions] = useState(false);
   const [showExecutionHistory, setShowExecutionHistory] = useState(false);
   const [showWorkflowSettings, setShowWorkflowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [workflowName, setWorkflowName] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [workflowTags, setWorkflowTags] = useState<string[]>([]);
@@ -333,6 +335,41 @@ function WorkflowBuilderContent() {
       setGroups([]);
     }
   }, [workflow, id, setViewport, fitView]);
+
+  const handleNodesFromChat = useCallback(
+    (nodesWithPositions: Array<{ type: string; config: Record<string, unknown>; position: { x: number; y: number } }>) => {
+      const newNodes: Node[] = nodesWithPositions.map((nodeData) => {
+        const nodeDef = getNodeDefinition(nodeData.type);
+        const defaultConfig: Record<string, unknown> = {};
+        
+        // Extract default values from node definition config
+        if (nodeDef?.config?.properties) {
+          Object.entries(nodeDef.config.properties).forEach(([key, prop]: [string, any]) => {
+            if (prop.default !== undefined) {
+              defaultConfig[key] = prop.default;
+            }
+          });
+        }
+        
+        return {
+          id: createId(),
+          type: 'custom',
+          position: nodeData.position,
+          data: {
+            type: nodeData.type,
+            label: nodeDef?.name || nodeData.type.split('.').pop()?.replace(/([A-Z])/g, ' $1').trim() || nodeData.type,
+            config: { ...defaultConfig, ...nodeData.config },
+          },
+        };
+      });
+      setNodes((prev) => {
+        const updated = [...prev, ...newNodes];
+        saveToHistory(updated, edges);
+        return updated;
+      });
+    },
+    [setNodes, edges, saveToHistory]
+  );
 
   const handleAddNode = useCallback(
     (nodeType: string, position: { x: number; y: number }) => {
@@ -757,6 +794,17 @@ function WorkflowBuilderContent() {
             </div>
           )}
           <button
+            onClick={() => setShowChat(!showChat)}
+            className={`px-3 py-2 rounded-lg transition-all duration-200 font-medium ${
+              showChat
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+            title="Chat to create workflow"
+          >
+            💬 Chat
+          </button>
+          <button
             onClick={handleCreateGroup}
             className={`px-3 py-2 rounded-lg transition-all duration-200 font-medium ${
               isCreatingGroup
@@ -1113,6 +1161,14 @@ function WorkflowBuilderContent() {
               setShowVersions(false);
             }}
             onClose={() => setShowVersions(false)}
+          />
+        )}
+
+        {/* Workflow Chat */}
+        {showChat && (
+          <WorkflowChat
+            onNodesGenerated={handleNodesFromChat}
+            onClose={() => setShowChat(false)}
           />
         )}
       </div>
