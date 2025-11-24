@@ -1074,6 +1074,11 @@ export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: N
                 );
               }
               
+              // Special handling for RAG pipeline configuration
+              const isRAGNode = nodeType === 'ai.rag';
+              const isVectorStoreField = isRAGNode && (key === 'vectorStoreProvider' || key === 'indexName');
+              const isLLMField = isRAGNode && (key === 'llmProvider' || key === 'model');
+              
               return (
                 <div key={key}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1084,6 +1089,16 @@ export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: N
                   </label>
                   {property.description && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{property.description}</p>
+                  )}
+                  {isRAGNode && isVectorStoreField && !config.vectorStoreProvider && key === 'vectorStoreProvider' && (
+                    <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-800 dark:text-blue-200">
+                      💡 Tip: Use "database" provider for persistent storage, or "memory" for temporary testing
+                    </div>
+                  )}
+                  {isRAGNode && isLLMField && !config.llmProvider && key === 'llmProvider' && (
+                    <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-800 dark:text-blue-200">
+                      💡 Tip: Ensure your LLM provider API key is configured in environment variables
+                    </div>
                   )}
                   {renderInput(key, property)}
                 </div>
