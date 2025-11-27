@@ -13,6 +13,58 @@ interface NodeConfigPanelProps {
   onDelete?: (nodeId: string) => void;
 }
 
+// Helper function to get user-friendly labels for property keys
+const getPropertyLabel = (key: string): string => {
+  const labelMap: Record<string, string> = {
+    'agentType': 'Agent Type',
+    'systemPrompt': 'System Prompt',
+    'selectedAgent': 'Select Agent',
+    'model': 'Model',
+    'provider': 'Provider',
+    'temperature': 'Temperature',
+    'maxIterations': 'Max Iterations',
+    'tools': 'Tools',
+    'memoryType': 'Memory Type',
+    'useRouting': 'Use Intelligent Routing',
+    'condition': 'Condition',
+    'maxIterations': 'Max Iterations',
+    'url': 'URL',
+    'selectors': 'Selectors',
+    'extractText': 'Extract Text',
+    'extractHtml': 'Extract Raw HTML',
+    'extractAttributes': 'Extract Specific Attributes',
+    'renderJavaScript': 'Render JavaScript',
+    'waitForSelector': 'Wait For Selector',
+    'waitForTimeout': 'Wait For Timeout',
+    'executeJavaScript': 'Execute JavaScript',
+    'scrollToBottom': 'Scroll To Bottom',
+    'viewport': 'Viewport',
+    'screenshot': 'Screenshot',
+    'useProxy': 'Use Proxy',
+    'proxyOptions': 'Proxy Options',
+    'proxyId': 'Proxy ID',
+    'operation': 'Operation',
+    'prompt': 'Prompt',
+    'query': 'Query',
+    'vectorStoreProvider': 'Vector Store Provider',
+    'indexName': 'Index Name',
+    'llmProvider': 'LLM Provider',
+    'preIngestHook': 'Pre-Ingest Hook',
+    'postAnswerHook': 'Post-Answer Hook',
+  };
+  
+  // If we have a custom label, use it; otherwise format the key nicely
+  if (labelMap[key]) {
+    return labelMap[key];
+  }
+  
+  // Convert camelCase to Title Case
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+};
+
 export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: NodeConfigPanelProps) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [retry, setRetry] = useState<Record<string, unknown>>({});
@@ -1097,7 +1149,7 @@ export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: N
                     return (
                       <div key={key} className="mb-4">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          {key}
+                          {getPropertyLabel(key)}
                           {nodeDef.config?.required?.includes(key) && (
                             <span className="text-red-500 dark:text-red-400 ml-1">*</span>
                           )}
@@ -1199,7 +1251,7 @@ export default function NodeConfigPanel({ node, onUpdate, onClose, onDelete }: N
                   return (
                     <div key={key} className="mb-3">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        {key}
+                        {getPropertyLabel(key)}
                         {nodeDef.config?.required?.includes(key) && (
                           <span className="text-red-500 dark:text-red-400 ml-1">*</span>
                         )}

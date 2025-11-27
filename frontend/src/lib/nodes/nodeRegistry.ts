@@ -1370,7 +1370,7 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
         },
         ocrProvider: {
           type: 'string',
-          enum: ['tesseract', 'google', 'aws', 'azure', 'openai'],
+          enum: ['paddle', 'easyocr', 'tesseract', 'google', 'docktr', 'nlweb', 'omniparser'],
           default: 'tesseract',
           description: 'OCR provider to use (if OCR enabled)',
         },
@@ -2035,6 +2035,35 @@ export const nodeRegistry: Record<string, NodeDefinition> = {
       },
       required: ['condition'],
     },
+    documentation: `
+### WHILE Loop Node Documentation
+
+The WHILE Loop node executes its connected path repeatedly as long as the specified \`condition\` evaluates to \`true\`.
+
+**Configuration:**
+- **Condition (JavaScript expression):** A JavaScript expression that must return a boolean value (\`true\` or \`false\`). The loop continues as long as this condition is \`true\`.
+  - You can access input data using \`input\` (e.g., \`input.counter < 10\`).
+  - You can access the current loop iteration count using \`loop.index\`.
+  - You can access the accumulated output from previous iterations using \`loop.output\`.
+- **Max Iterations:** A safety limit to prevent infinite loops. The loop will stop after this many iterations, even if the condition is still \`true\`.
+
+**Inputs:**
+- **input:** Any data passed into the loop. This data is available within the \`condition\` expression.
+
+**Outputs:**
+- **output:** An array containing the output of each successful iteration of the loop.
+- **item:** The output of the *current* iteration.
+
+**Example Condition:**
+\`\`\`javascript
+input.items.length > 0 && loop.index < 5
+\`\`\`
+This condition would loop as long as there are items in \`input.items\` AND the loop has run less than 5 times.
+
+**Important Considerations:**
+- Ensure your condition will eventually become \`false\` to avoid infinite loops (unless \`maxIterations\` is sufficient).
+- The \`input\` object passed to subsequent nodes within the loop will be the original input to the WHILE loop. To pass data between loop iterations, you might need to use a \`data.transform\` node to update the \`loop.output\` or \`input\` for the next iteration.
+    `,
   },
   'logic.loop.foreach': {
     type: 'logic.loop.foreach',
